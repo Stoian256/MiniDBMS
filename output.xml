@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Databases>
+  <DataBase dataBaseName="MyDatabase1" />
+  <DataBase dataBaseName="MyDatabase" />
+  <DataBase dataBaseName="MyDatabase2" />
+</Databases>
