@@ -1,30 +1,22 @@
-package org.example.service;
+package org.example.server.service;
 
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
-import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
-import net.sf.jsqlparser.statement.create.schema.CreateSchema;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.drop.Drop;
-import org.example.repository.DBMSRepository;
-import org.jdom2.Document;
+import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
-import org.jdom2.JDOMException;
-import org.jdom2.input.SAXBuilder;
 import org.jdom2.output.Format;
 import org.jdom2.output.XMLOutputter;
 
 import java.io.*;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Objects;
 import java.util.List;
-import java.util.SimpleTimeZone;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,12 +24,13 @@ public class DBMSService {
     public static DBMSRepository dbmsRepository;
     static String regexCreateDatabase = "CREATE\\s+DATABASE\\s+([\\w_]+);";
     static String regexDropDatabase = "DROP\\s+DATABASE\\s+([\\w_]+);";
+    static String regexUseDatabase = "USE\\s+([\\w_]+);";
 
     public DBMSService(DBMSRepository dbmsRepository) {
         this.dbmsRepository = dbmsRepository;
     }
 
-    public static void executeCommand(String sqlCommand) throws JSQLParserException {
+    public static void executeCommand(String sqlCommand) throws Exception {
         Pattern pattern = Pattern.compile(regexCreateDatabase);
         Matcher matcher = pattern.matcher(sqlCommand);
         if (matcher.find()) {
@@ -52,6 +45,13 @@ public class DBMSService {
             dropDataBase(databaseName);
             return;
         }
+        pattern = Pattern.compile(regexUseDatabase);
+        matcher = pattern.matcher(sqlCommand);
+        if (matcher.find()) {
+            String databaseName = matcher.group(1);
+            useDataBase(databaseName);
+            return;
+        }
         Statement statement = CCJSqlParserUtil.parse(sqlCommand);
         if (statement instanceof CreateTable) {
             CreateTable createTable = (CreateTable) statement;
@@ -59,33 +59,102 @@ public class DBMSService {
         } else if (statement instanceof net.sf.jsqlparser.statement.drop.Drop) {
             Drop dropTable = (Drop) statement;
             dropTable(dropTable);
-        }
-        else if (statement instanceof CreateIndex) {
+        } else if (statement instanceof CreateIndex) {
             CreateIndex createIndex = (CreateIndex) statement;
-            System.out.println(createIndex);
-            // Extrageți informațiile relevante din comanda de creare a indexului
-            String indexName = createIndex.getIndex().getName();
-            String tableName = createIndex.getTable().getName();
-            List<String> columnName = createIndex.getIndex().getColumnsNames();
-
-
-            // Aici puteți utiliza informațiile extrase pentru a efectua operații ulterioare sau pentru a crea fișierul XML
-
-            System.out.println("Index Name: " + indexName);
-            System.out.println("Table Name: " + tableName);
-            System.out.println("Column Name: " + columnName);
+            createIndex(createIndex);
         }
     }
 
+    public static void createIndex(CreateIndex index) throws Exception {
+        if (dbmsRepository.currentDatabase.equals(""))
+            throw new Exception("No database in use!");
+        try {
 
-    public static void createDatabase(String databaseName) {
+            String indexName = index.getIndex().getName();
+            String tableName = index.getTable().getName();
+            List<String> columnsNames = index.getIndex().getColumnsNames();
+            String isUnique = index.getIndex().getType()!=null ? "1" : "0";
+            Element rootDataBases = dbmsRepository.doc.getRootElement();
+            Element dataBase = rootDataBases.getChild("DataBase");
+            for (Element element : rootDataBases.getChildren("DataBase")) {
+                if (Objects.equals(element.getAttributeValue("dataBaseName"), dbmsRepository.currentDatabase)) {
+                    dataBase = element;
+                    break;
+                }
+            }
+
+            Element tableElement = null;
+
+            for (Element element : dataBase.getChildren("Table")) {
+                if (Objects.equals(element.getAttributeValue("tableName"),  tableName.toString())) {
+                    tableElement =element;
+                }
+            }
+
+            if (tableElement == null){
+                throw new Exception("Table not found!");
+            }
+
+            Element indexFilesElement = tableElement.getChild("IndexFiles");
+            if (indexFilesElement == null) {
+                indexFilesElement = new Element("IndexFiles");
+            }
+            Element indexFileElement = new Element("IndexFile");
+            indexFileElement.setAttribute("indexName", indexName);
+
+            indexFileElement.setAttribute("isUnique", isUnique);
+            indexFileElement.setAttribute("indexType", "BTree");
+
+
+            Element indexAttributesElement = new Element("IndexAttributes");
+            for (String columnName : columnsNames) {
+                if(!tableElement.getChild("Structure").getChildren("Attribute").stream().anyMatch(column ->  column.getAttributeValue("attributeName").equalsIgnoreCase(columnName))){
+                    throw new Exception("Column "+columnName+" not found!");
+                }
+
+                Element iAttributeElement = new Element("IAttribute");
+                iAttributeElement.setText(columnName);
+                indexAttributesElement.addContent(iAttributeElement);
+            }
+
+            indexFileElement.addContent(indexAttributesElement);
+            indexFilesElement.addContent(indexFileElement);
+
+
+            Format format = Format.getPrettyFormat();
+            format.setEncoding("UTF-8");
+            format.setLineSeparator("\n");
+            format.setExpandEmptyElements(true);
+
+            // Crearea unui fișier XML
+            XMLOutputter xmlOutput = new XMLOutputter(format);
+            xmlOutput.output(dbmsRepository.doc, new FileWriter(dbmsRepository.catalogPath));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void useDataBase(String databaseName) throws Exception {
+        Element rootElement = dbmsRepository.doc.getRootElement();
+        for (Element element : rootElement.getChildren("DataBase")) {
+            if (Objects.equals(element.getAttributeValue("dataBaseName"), databaseName)) {
+                dbmsRepository.currentDatabase = databaseName;
+                break;
+            }
+        }
+
+        if (dbmsRepository.currentDatabase.equals(""))
+            throw new Exception("Database not found!");
+
+    }
+
+    public static void createDatabase(String databaseName) throws Exception {
         try {
 
             Element rootElement = dbmsRepository.doc.getRootElement();
             for (Element element : rootElement.getChildren("DataBase")) {
-                System.out.println(element.getAttributeValue("dataBaseName"));
                 if (Objects.equals(element.getAttributeValue("dataBaseName"), databaseName)) {
-                    return;
+                    throw new Exception("Database already exist!");
                 }
             }
 
@@ -114,6 +183,7 @@ public class DBMSService {
             for (Element element : rootElement.getChildren("DataBase")) {
                 if (Objects.equals(element.getAttributeValue("dataBaseName"), databaseName)) {
                     rootElement.removeContent(element);
+                    break;
                 }
             }
 
@@ -130,10 +200,17 @@ public class DBMSService {
         }
     }
 
-    public static void dropTable(Drop dropTable) {
+    public static void dropTable(Drop dropTable) throws Exception {
+        if (dbmsRepository.currentDatabase.equals(""))
+            throw new Exception("No database in use!");
         try {
             Element rootDataBases = dbmsRepository.doc.getRootElement();
             Element dataBase = rootDataBases.getChild("DataBase");
+            for (Element element : rootDataBases.getChildren("DataBase")) {
+                if (Objects.equals(element.getAttributeValue("dataBaseName"), dbmsRepository.currentDatabase)) {
+                    dataBase = element;
+                }
+            }
 
             for (Element element : dataBase.getChildren("Table")) {
                 if (Objects.equals(element.getAttributeValue("tableName"), dropTable.getName().toString())) {
@@ -156,18 +233,20 @@ public class DBMSService {
         }
     }
 
-    public static void createTable(CreateTable createTable) {
+    public static void createTable(CreateTable createTable) throws Exception {
+        if (dbmsRepository.currentDatabase.equals(""))
+            throw new Exception("No database in use!");
         try {
 
             String tableName = createTable.getTable().getName();
-            String fileName = dbmsRepository.catalogPath + ".bin"; // Fișierul poate fi hardcodat sau specificat de utilizator
+            String fileName = tableName + ".csv"; // Fișierul poate fi hardcodat sau specificat de utilizator
             int rowLength = 0; // Calculați rowLength în funcție de coloanele tabelului
 
             // Crearea elementului radacina "<Table>"
             Element rootElement = new Element("Table");
             rootElement.setAttribute("tableName", tableName);
             rootElement.setAttribute("fileName", fileName);
-            rootElement.setAttribute("rowLength", String.valueOf(rowLength));
+            //rootElement.setAttribute("rowLength", String.valueOf(rowLength));
 
             // Crearea elementului "<Structure>"
             Element structureElement = new Element("Structure");
@@ -297,8 +376,13 @@ public class DBMSService {
             rootElement.addContent(indexFilesElement);
 
             Element rootDataBases = dbmsRepository.doc.getRootElement();
-            Element dataBase = rootDataBases.getChild("DataBase");
-            dataBase.addContent(rootElement);
+            Element database = rootDataBases.getChild("DataBase");
+            for (Element element : rootElement.getChildren("DataBase")) {
+                if (Objects.equals(element.getAttributeValue("dataBaseName"), dbmsRepository.currentDatabase)) {
+                    database = element;
+                }
+            }
+            database.addContent(rootElement);
             // Setarea versiunii și codificării XML
             Format format = Format.getPrettyFormat();
             format.setEncoding("UTF-8");

@@ -1,4 +1,4 @@
-package org.example;
+package org.example.vjunk;
 
 import org.jdom2.*;
 import org.jdom2.input.SAXBuilder;

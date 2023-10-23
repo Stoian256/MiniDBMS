@@ -1,4 +1,4 @@
-package org.example;
+package org.example.vjunk;
 
 import net.sf.jsqlparser.statement.create.table.Index;
 import org.jdom2.*;
@@ -8,7 +8,6 @@ import org.jdom2.output.XMLOutputter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Scanner;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 

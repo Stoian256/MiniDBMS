@@ -1,4 +1,4 @@
-package org.example.repository;
+package org.example.server.repository;
 
 import org.jdom2.Document;
 import org.jdom2.Element;
@@ -14,8 +14,10 @@ import java.io.IOException;
 public class DBMSRepository {
     public String catalogPath;
     public Document doc;
+    public String currentDatabase;
     public DBMSRepository(String catalogPath){
         this.catalogPath = catalogPath;
+        this.currentDatabase = "";
         try {
             File xmlFile = new File(catalogPath);
             if (xmlFile.exists()) {

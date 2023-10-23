@@ -1,8 +1,8 @@
-package org.example;
+package org.example.vjunk;
 
 import net.sf.jsqlparser.JSQLParserException;
-import org.example.repository.DBMSRepository;
-import org.example.service.DBMSService;
+import org.example.server.repository.DBMSRepository;
+import org.example.server.service.DBMSService;
 
 import java.util.Objects;
 import java.util.Scanner;
@@ -23,6 +23,8 @@ public class DBMSClient {
             try {
                 dbmsService.executeCommand(input);
             } catch (JSQLParserException e) {
+                throw new RuntimeException(e);
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
