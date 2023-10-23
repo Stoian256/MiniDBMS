@@ -25,10 +25,8 @@ public class Server {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("S-a conectat un client.");
 
-                // Creează un flux pentru a citi mesaje de la client
-                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 
-                // Creează un flux pentru a trimite mesaje către client
+                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
                 PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
 
                 String message;

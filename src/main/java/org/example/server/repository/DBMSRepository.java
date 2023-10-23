@@ -12,9 +12,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 
 public class DBMSRepository {
-    public String catalogPath;
-    public Document doc;
-    public String currentDatabase;
+    private String catalogPath;
+    private Document doc;
+    private String currentDatabase;
+    private Format format;
     public DBMSRepository(String catalogPath){
         this.catalogPath = catalogPath;
         this.currentDatabase = "";
@@ -27,7 +28,7 @@ public class DBMSRepository {
                 doc = new Document(new Element("Databases"));
             }
 
-            Format format = Format.getPrettyFormat();
+            format = Format.getPrettyFormat();
             format.setEncoding("UTF-8");
             format.setExpandEmptyElements(true);
             format.setLineSeparator("\n");
@@ -39,5 +40,41 @@ public class DBMSRepository {
         } catch (JDOMException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void saveToFile() throws IOException {
+        XMLOutputter xmlOutput = new XMLOutputter(format);
+        xmlOutput.output(doc, new FileWriter(catalogPath));
+    }
+    public String getCatalogPath() {
+        return catalogPath;
+    }
+
+    public void setCatalogPath(String catalogPath) {
+        this.catalogPath = catalogPath;
+    }
+
+    public Document getDoc() {
+        return doc;
+    }
+
+    public void setDoc(Document doc) {
+        this.doc = doc;
+    }
+
+    public String getCurrentDatabase() {
+        return currentDatabase;
+    }
+
+    public void setCurrentDatabase(String currentDatabase) {
+        this.currentDatabase = currentDatabase;
+    }
+
+    public Format getFormat() {
+        return format;
+    }
+
+    public void setFormat(Format format) {
+        this.format = format;
     }
 }
