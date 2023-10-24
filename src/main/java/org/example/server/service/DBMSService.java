@@ -334,6 +334,15 @@ public class DBMSService {
                             String referencedTable = matcher.group(2);
                             String referencedColumns = matcher.group(3);
 
+                            Element refrencedTable = null;
+                            Element dataBase = rootDataBases.getChild("DataBase");
+                            for (Element element : dataBase.getChildren("Table")) {
+                                if (element.getAttributeValue("tableName").equals(referencedTable)) {
+                                    refrencedTable = element;
+                                }
+                            }
+                            if (refrencedTable==null)
+                                throw new Exception("Referenced table not found!");
 
                             for (String columnName : index.getColumnsNames()) {
                                 Element fkAttributeElement = new Element("fkAttribute");
@@ -349,6 +358,8 @@ public class DBMSService {
                             referencesElement.addContent(refTableElement);
 
                             for (String refColumn : referencedColumns.split(",")) {
+                                if(!refrencedTable.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(refColumn)))
+                                    throw new Exception("Referenced column "+refColumn+" not found!");
                                 Element fkAttributeElement = new Element("fkAttribute");
                                 fkAttributeElement.setText(refColumn.trim());
                                 foreignKeyElement.addContent(fkAttributeElement);
