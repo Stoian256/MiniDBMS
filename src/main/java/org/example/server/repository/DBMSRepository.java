@@ -30,7 +30,7 @@ public class DBMSRepository {
 
             format = Format.getPrettyFormat();
             format.setEncoding("UTF-8");
-            format.setExpandEmptyElements(true);
+            //format.setExpandEmptyElements(true);
             format.setLineSeparator("\n");
 
             XMLOutputter xmlOutput = new XMLOutputter(format);

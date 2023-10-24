@@ -239,14 +239,17 @@ public class DBMSService {
                 String attributeName = column.getColumnName();
                 String type = column.getColDataType().getDataType();
                 int isNull = column.toString().contains("NOT NULL") ? 0 : 1;
-
+                int length = 0;
                 Element attributeElement = new Element("Attribute");
                 attributeElement.setAttribute("attributeName", attributeName);
                 attributeElement.setAttribute("type", type);
                 if (type.equalsIgnoreCase("char") || type.equalsIgnoreCase("varchar")) {
-                    int length = column.getColDataType().getArgumentsStringList().size() > 0 ? Integer.parseInt(column.getColDataType().getArgumentsStringList().get(0)) : 30;
-                    attributeElement.setAttribute("length", String.valueOf(length));
+                    length = column.getColDataType().getArgumentsStringList().size() > 0 ? Integer.parseInt(column.getColDataType().getArgumentsStringList().get(0)) : 30;
+
                 }
+                else if(type.equalsIgnoreCase("int") || type.equalsIgnoreCase("double"))
+                    length = 64;
+                attributeElement.setAttribute("length", String.valueOf(length));
                 attributeElement.setAttribute("isnull", String.valueOf(isNull));
                 structureElement.addContent(attributeElement);
             }
@@ -262,92 +265,94 @@ public class DBMSService {
                 foreignKeysElement = new Element("foreignKeys");
             }
 
+            if (createTable.getIndexes()!=null) {
+                for (Index index : createTable.getIndexes()) {
+                    if (indexFilesElement.getChildren("IndexFile").stream().anyMatch(column -> column.getAttributeValue("indexName").equals(index.getColumnsNames().get(0) + ".ind")))
+                        throw new Exception("An Index with same name already exist!");
 
-            for (Index index : createTable.getIndexes()) {
-                if (indexFilesElement.getChildren("IndexFile").stream().anyMatch(column -> column.getAttributeValue("indexName").equals(index.getColumnsNames().get(0) + ".ind")))
-                    throw new Exception("An Index with same name already exist!");
-                if (index.getType().equals("PRIMARY KEY")) {
-                    Element indexFileElement = new Element("IndexFile");
-                    System.out.println(index);
-                    indexFileElement.setAttribute("indexName", index.getColumnsNames().get(0) + ".ind");
-                    indexFileElement.setAttribute("keyLength", "12");
-                    indexFileElement.setAttribute("isUnique", "1");
-                    indexFileElement.setAttribute("indexType", "BTree");
-
-
-                    Element indexAttributesElement = new Element("IndexAttributes");
-                    for (String columnName : index.getColumnsNames()) {
-                        Element pkAttributeElement = new Element("pkAttribute");
-                        primaryKeyElement.addContent(pkAttributeElement);
-                        pkAttributeElement.addContent(columnName);
-                        Element iAttributeElement = new Element("IAttribute");
-                        iAttributeElement.setText(columnName); // Aici trebuie să specificați numele atributului indexului
-
-                        indexAttributesElement.addContent(iAttributeElement);
-                    }
-                    indexFileElement.addContent(indexAttributesElement);
-                    indexFilesElement.addContent(indexFileElement);
-
-                }
-                if (index.getType().equals("UNIQUE")) {
-                    //pentru index
-                    // Adăugați elementul IndexFiles pentru index
-                    Element indexFileElement = new Element("IndexFile");
-                    indexFileElement.setAttribute("indexName", index.getColumnsNames().get(0) + ".ind");
-                    indexFileElement.setAttribute("keyLength", "30");
-                    indexFileElement.setAttribute("isUnique", "1");
-                    indexFileElement.setAttribute("indexType", "BTree");
+                    if (index.getType().equals("PRIMARY KEY")) {
+                        Element indexFileElement = new Element("IndexFile");
+                        System.out.println(index);
+                        indexFileElement.setAttribute("indexName", index.getColumnsNames().get(0) + ".ind");
+                        indexFileElement.setAttribute("keyLength", "64");
+                        indexFileElement.setAttribute("isUnique", "1");
+                        indexFileElement.setAttribute("indexType", "BTree");
 
 
-                    Element indexAttributesElement = new Element("IndexAttributes");
-                    for (String columnName : index.getColumnsNames()) {
-                        Element uniqueAttributeElement = new Element("UniqueAttribute");
-                        uniqueAttributeElement.addContent(columnName);
-                        uniqueKeysElement.addContent(uniqueAttributeElement);
-
-                        Element iAttributeElement = new Element("IAttribute");
-                        iAttributeElement.setText(columnName); // Aici trebuie să specificați numele atributului indexului
-
-                        indexAttributesElement.addContent(iAttributeElement);
-
-                    }
-                    indexFileElement.addContent(indexAttributesElement);
-                    indexFilesElement.addContent(indexFileElement);
-
-
-                }
-
-
-                if (index.getType().equals("FOREIGN KEY")) {
-                    String foreignKeyPattern = "FOREIGN KEY \\(([^)]+)\\) REFERENCES ([^(]+)\\(([^)]+)\\)";
-                    Pattern pattern = Pattern.compile(foreignKeyPattern);
-                    Matcher matcher = pattern.matcher(index.toString());
-
-                    Element foreignKeyElement = new Element("foreignKey");
-                    foreignKeysElement.addContent(foreignKeyElement);
-
-                    if (matcher.find()) {
-                        String referencedTable = matcher.group(2);
-                        String referencedColumns = matcher.group(3);
-
-
+                        Element indexAttributesElement = new Element("IndexAttributes");
                         for (String columnName : index.getColumnsNames()) {
-                            Element fkAttributeElement = new Element("fkAttribute");
-                            fkAttributeElement.setText(columnName);
-                            foreignKeyElement.addContent(fkAttributeElement);
+                            Element pkAttributeElement = new Element("pkAttribute");
+                            primaryKeyElement.addContent(pkAttributeElement);
+                            pkAttributeElement.addContent(columnName);
+                            Element iAttributeElement = new Element("IAttribute");
+                            iAttributeElement.setText(columnName); // Aici trebuie să specificați numele atributului indexului
+
+                            indexAttributesElement.addContent(iAttributeElement);
                         }
+                        indexFileElement.addContent(indexAttributesElement);
+                        indexFilesElement.addContent(indexFileElement);
 
-                        Element referencesElement = new Element("references");
-                        foreignKeyElement.addContent(referencesElement);
+                    }
+                    if (index.getType().equals("UNIQUE")) {
+                        //pentru index
+                        // Adăugați elementul IndexFiles pentru index
+                        Element indexFileElement = new Element("IndexFile");
+                        indexFileElement.setAttribute("indexName", index.getColumnsNames().get(0) + ".ind");
+                        indexFileElement.setAttribute("keyLength", "30");
+                        indexFileElement.setAttribute("isUnique", "1");
+                        indexFileElement.setAttribute("indexType", "BTree");
 
-                        Element refTableElement = new Element("refTable");
-                        refTableElement.setText(referencedTable);
-                        referencesElement.addContent(refTableElement);
 
-                        for (String refColumn : referencedColumns.split(",")) {
-                            Element fkAttributeElement = new Element("fkAttribute");
-                            fkAttributeElement.setText(refColumn.trim());
-                            foreignKeyElement.addContent(fkAttributeElement);
+                        Element indexAttributesElement = new Element("IndexAttributes");
+                        for (String columnName : index.getColumnsNames()) {
+                            Element uniqueAttributeElement = new Element("UniqueAttribute");
+                            uniqueAttributeElement.addContent(columnName);
+                            uniqueKeysElement.addContent(uniqueAttributeElement);
+
+                            Element iAttributeElement = new Element("IAttribute");
+                            iAttributeElement.setText(columnName); // Aici trebuie să specificați numele atributului indexului
+
+                            indexAttributesElement.addContent(iAttributeElement);
+
+                        }
+                        indexFileElement.addContent(indexAttributesElement);
+                        indexFilesElement.addContent(indexFileElement);
+
+
+                    }
+
+
+                    if (index.getType().equals("FOREIGN KEY")) {
+                        String foreignKeyPattern = "FOREIGN KEY \\(([^)]+)\\) REFERENCES ([^(]+)\\(([^)]+)\\)";
+                        Pattern pattern = Pattern.compile(foreignKeyPattern);
+                        Matcher matcher = pattern.matcher(index.toString());
+
+                        Element foreignKeyElement = new Element("foreignKey");
+                        foreignKeysElement.addContent(foreignKeyElement);
+
+                        if (matcher.find()) {
+                            String referencedTable = matcher.group(2);
+                            String referencedColumns = matcher.group(3);
+
+
+                            for (String columnName : index.getColumnsNames()) {
+                                Element fkAttributeElement = new Element("fkAttribute");
+                                fkAttributeElement.setText(columnName);
+                                foreignKeyElement.addContent(fkAttributeElement);
+                            }
+
+                            Element referencesElement = new Element("references");
+                            foreignKeyElement.addContent(referencesElement);
+
+                            Element refTableElement = new Element("refTable");
+                            refTableElement.setText(referencedTable);
+                            referencesElement.addContent(refTableElement);
+
+                            for (String refColumn : referencedColumns.split(",")) {
+                                Element fkAttributeElement = new Element("fkAttribute");
+                                fkAttributeElement.setText(refColumn.trim());
+                                foreignKeyElement.addContent(fkAttributeElement);
+                            }
                         }
                     }
                 }

@@ -25,7 +25,7 @@ public class Client {
                     return;
                 out.println(input);
                 String response = in.readLine();
-                System.out.println("Server: " + response);
+                System.out.println(response);
 
             }
         } catch (IOException e) {
