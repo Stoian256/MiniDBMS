@@ -1,5 +1,10 @@
 package org.example.server.service;
 
+import com.mongodb.*;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.statement.Statement;
@@ -8,6 +13,7 @@ import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.drop.Drop;
+import org.bson.Document;
 import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
 import org.jdom2.output.Format;
@@ -383,6 +389,40 @@ public class DBMSService {
 
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    public void testMongoDb(){
+        String connectionString = "mongodb+srv://silviu25stoian:llPEl44YGItb6pqw@cluster0.7wfpod0.mongodb.net/?retryWrites=true&w=majority";
+        ServerApi serverApi = ServerApi.builder()
+                .version(ServerApiVersion.V1)
+                .build();
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString(connectionString))
+                .serverApi(serverApi)
+                .build();
+        // Create a new client and connect to the server
+        try (MongoClient mongoClient = MongoClients.create(settings)) {
+            try {
+                // Send a ping to confirm a successful connection
+                MongoDatabase database = mongoClient.getDatabase("testSgbd");
+                //database.runCommand(new Document("ping", 1));
+                //System.out.println("Pinged your deployment. You successfully connected to MongoDB!");
+
+
+                String tableName="persoane";
+                // Creează colecția MongoDB cu numele tabelului SQL
+                MongoCollection<Document> collection = database.getCollection(tableName);
+
+                int primaryKey = 2;
+                String otherAttributes = "Vlad" + "#" + "Stoian";
+                Document document = new Document("_id", primaryKey).append("other_attributes", otherAttributes);
+                collection.insertOne(document);
+                System.out.println("SUCCES");
+                mongoClient.close();
+            } catch (MongoException e) {
+                e.printStackTrace();
+            }
         }
     }
 }

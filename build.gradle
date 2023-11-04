@@ -16,7 +16,7 @@ dependencies {
     implementation 'org.jdom:jdom2:2.0.6'
     // https://mvnrepository.com/artifact/com.github.jsqlparser/jsqlparser
     implementation group: 'com.github.jsqlparser', name: 'jsqlparser', version: '4.2'
-
+    implementation 'org.mongodb:mongodb-driver-sync:4.11.0'
 
 }
 
