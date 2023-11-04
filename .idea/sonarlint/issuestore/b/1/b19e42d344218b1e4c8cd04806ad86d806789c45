@@ -1,0 +1,10 @@
+
+g	java:S112"FDefine and throw a dedicated exception instead of using a generic one.(Ò‚Òéüÿÿÿÿ8Ô³şÇµ1
+g	java:S112"FDefine and throw a dedicated exception instead of using a generic one.(Ò‚Òéüÿÿÿÿ8¶Ì³àµ1
+H
+java:S2440"+Remove this instantiation of "DBMSService".(Ôí‡ç8ğÜÛàµ1
+Z	java:S106"9Replace this use of System.out or System.err by a logger.(ÛŒ†²ÿÿÿÿÿ8Û³şÇµ1
+a
+java:S2147"DCombine this catch with the one at line 25, which has the same body.(”ı¾8ÄÌ³àµ1
+W
+java:S2209"5Change this instance-reference to a static reference.(ÿüãŞûÿÿÿÿ8ôÜÛàµ1

@@ -1,0 +1,29 @@
+
+n
+java:S1192$"LDefine a constant instead of duplicating this literal "catalog.xml" 3 times.(ëÒ¢äüÿÿÿÿ8şÒ¡²µ1
+o
+java:S2095*"MUse try-with-resources or close this "FileInputStream" in a "finally" clause.(à¿×öşÿÿÿÿ8ÿÿŒ»µ1
+O
+java:S2755+"3Disable access to external entities in XML parsing.(ŒüÄD8ÿÿŒ»µ1
+d
+java:S1854}"BRemove this useless assignment to local variable "createIndexSQL".(çº©Ñøÿÿÿÿ8¼Ó¡²µ1
+[
+java:S1854…"=Remove this useless assignment to local variable "tableName".(ªâö³8¼Ó¡²µ1
+d
+java:S1854Š"ARemove this useless assignment to local variable "attributeName".(‡³­Ûÿÿÿÿÿ8¼Ó¡²µ1
+_
+java:S1854‹"ARemove this useless assignment to local variable "attributeType".(©‘ë8¼Ó¡²µ1
+\
+java:S1854">Remove this useless assignment to local variable "primaryKey".(ê‰„å8¼Ó¡²µ1
+U
+java:S1481}"3Remove this unused "createIndexSQL" local variable.(çº©Ñøÿÿÿÿ8½Ó¡²µ1
+s
+java:S6201ƒ"PReplace this instanceof check and cast with 'instanceof CreateTable createTable'(¥ÕÖúÿÿÿÿ8½Ó¡²µ1
+L
+java:S1481…".Remove this unused "tableName" local variable.(ªâö³8½Ó¡²µ1
+U
+java:S1481Š"2Remove this unused "attributeName" local variable.(‡³­Ûÿÿÿÿÿ8¾Ó¡²µ1
+P
+java:S1481‹"2Remove this unused "attributeType" local variable.(©‘ë8¾Ó¡²µ1
+M
+java:S1481"/Remove this unused "primaryKey" local variable.(ê‰„å8¿Ó¡²µ1
