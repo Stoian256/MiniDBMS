@@ -20,8 +20,8 @@ public class Server {
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
             System.out.println("Serverul a pornit și ascultă pe portul " + port);
-            dbmsService.testMongoDb();
-            /*while (true) {
+
+            while (true) {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("S-a conectat un client.");
 
@@ -47,7 +47,7 @@ public class Server {
                 }
 
                 clientSocket.close();
-            }*/
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
