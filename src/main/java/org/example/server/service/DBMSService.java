@@ -40,6 +40,7 @@ public class DBMSService {
     private static final String regexCreateDatabase = "CREATE\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexDropDatabase = "DROP\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexUseDatabase = "USE\\s+([\\w_]+);";
+
     private static final String DATABASE_NAME = "mini_dbms";
     private static final String DATABASE_NODE = "DataBase";
     private static final String TABLE_NODE = "Table";
@@ -83,8 +84,7 @@ public class DBMSService {
         } else if (statement instanceof Delete delete) {
             deleteFromTable(delete
             );
-        }
-        else if (statement instanceof CreateTable createTable) {
+        } else if (statement instanceof CreateTable createTable) {
             createTable(createTable);
         } else if (statement instanceof Drop dropTable) {
             dropTable(dropTable);
@@ -93,51 +93,65 @@ public class DBMSService {
         } else
             throw new Exception("Eroare parsare comanda");
     }
+
     public static void insert(Insert insert) throws Exception {
         if (dbmsRepository.getCurrentDatabase().equals(""))
             throw new Exception("No database in use!");
 
-        Element rootDataBases = dbmsRepository.getDoc().getRootElement();
-        Element dataBase = rootDataBases.getChild("DataBase");
 
-        Element tableElement = null;
-        String tableName=insert.getTable().getName();
+        String tableName = insert.getTable().getName();
+        Element tableElement = validateTableName(tableName);
 
-        for (Element element : dataBase.getChildren("Table")) {
-            if (Objects.equals(element.getAttributeValue("tableName"), tableName)) {
-                tableElement = element;
-            }
+        List<Column> insertColumns = insert.getColumns();
+        List<Expression> values = ((ExpressionList) insert.getItemsList()).getExpressions();
+
+
+        List<String> attributes = tableElement.getChild("Structure").getChildren("Attribute").stream().map(line -> line.getAttributeValue("attributeName")).toList();
+        List<Element> primaryKeyElements = tableElement.getChild("primaryKey").getChildren("pkAttribute");
+
+        validateInsertColumns(insertColumns, attributes);
+        List<String> keyValueList = computeInsertKeyValue(attributes, primaryKeyElements, values);
+        insertInMongoDb(tableName, keyValueList.get(0), keyValueList.get(1));
+    }
+
+    private static void insertInMongoDb(String tableName, String key, String values) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+
+            Document document = new Document("_id", key).append("values", values);
+            collection.insertOne(document);
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
         }
+    }
 
-        if (tableElement == null) {
-            throw new Exception("Table not found!");
-        }
-        List<String> columns= tableElement.getChild("Structure").getChildren("Attribute").stream().map(line->line.getAttributeValue("attributeName")).toList();
-        if (insert.getColumns()!=null){
-            if(insert.getColumns().size()!= columns.size())
+    private static void validateInsertColumns(List<Column> columns, List<String> attributes) throws Exception {
+        if (columns != null) {
+            if (columns.size() != attributes.size())
                 throw new Exception("Number of query values and destination fields are not the same.");
-            for (Column column : insert.getColumns()){
-                if(!columns.contains(column.toString()))
-                    throw new Exception( "Table "+tableName+ " has no column named "+column);
+            for (Column column : columns) {
+                if (!attributes.contains(column.toString()))
+                    throw new Exception("Table has no column named " + column);
+            }
+
+        }
+    }
+
+    private static List<String> computeInsertKeyValue(List<String> columns, List<Element> primaryKeyElements, List<Expression> values) {
+        List<String> primaryKeyList = new ArrayList<>();
+        List<String> othersList = new ArrayList<>();
+        for (int i = 0; i < columns.size(); i++) {
+            String column = columns.get(i);
+            String value = values.get(i).toString();
+
+            if (primaryKeyElements.stream().anyMatch(e -> e.getText().equals(column))) {
+                primaryKeyList.add(value);
+            } else {
+                othersList.add(value);
             }
         }
-
-
-        MongoClient mongoClient = getMongoDbConnection();
-        MongoDatabase database = mongoClient.getDatabase("testSgbd");
-
-        // Creează colecția MongoDB cu numele tabelului SQL
-        MongoCollection<Document> collection = database.getCollection(dbmsRepository.getCurrentDatabase()+tableName);
-
-        List<String> valuesList=((ExpressionList)insert.getItemsList()).getExpressions().stream().map(Object::toString).toList();
-        String primaryKey = valuesList.get(0);
-        String values = valuesList.get(1);
-        for(int i=2;i<valuesList.size();i++)
-            values+="#"+valuesList.get(i);
-
-        Document document = new Document("_id", primaryKey).append("values", values);
-        collection.insertOne(document);
-        mongoClient.close();
+        return Arrays.asList(String.join("#", primaryKeyList), String.join("#", othersList));
     }
 
     private static void deleteFromTable(Delete delete) throws Exception {
@@ -605,18 +619,5 @@ public class DBMSService {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    public static MongoClient getMongoDbConnection(){
-        String connectionString = "mongodb+srv://silviu25stoian:llPEl44YGItb6pqw@cluster0.7wfpod0.mongodb.net/?retryWrites=true&w=majority";
-        ServerApi serverApi = ServerApi.builder()
-                .version(ServerApiVersion.V1)
-                .build();
-        MongoClientSettings settings = MongoClientSettings.builder()
-                .applyConnectionString(new ConnectionString(connectionString))
-                .serverApi(serverApi)
-                .build();
-        // Create a new client and connect to the server
-        return MongoClients.create(settings);
     }
 }
