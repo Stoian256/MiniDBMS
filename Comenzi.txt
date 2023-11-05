@@ -12,3 +12,6 @@ CREATE INDEX IX_User_Name ON Users (Name, Age);
 CREATE UNIQUE INDEX IX_User_Name ON Users (Name, Age);
 CREATE UNIQUE INDEX IX_User_Name ON Specialization (Name, Age);
 CREATE UNIQUE INDEX IX_User_Name ON Specialization (SpecName, Language);
+
+INSERT INTO Persons (PersonID, FirstName, LastName) VALUES (1, 'John', 'Doe');
+INSERT INTO Persons VALUES (2, 'Silviu', 'Stoian');
