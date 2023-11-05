@@ -5,21 +5,20 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import net.sf.jsqlparser.JSQLParserException;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.statement.Statement;
 import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.drop.Drop;
+import net.sf.jsqlparser.statement.insert.Insert;
 import org.bson.Document;
 import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
-import org.jdom2.output.Format;
-import org.jdom2.output.XMLOutputter;
 
-import java.io.*;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.List;
@@ -58,8 +57,11 @@ public class DBMSService {
             useDataBase(databaseName);
             return;
         }
+
         Statement statement = CCJSqlParserUtil.parse(sqlCommand);
-        if (statement instanceof CreateTable createTable) {
+        if (statement instanceof Insert insert) {
+            insert(insert);
+        } else if (statement instanceof CreateTable createTable) {
             createTable(createTable);
         } else if (statement instanceof Drop dropTable) {
             dropTable(dropTable);
@@ -67,6 +69,52 @@ public class DBMSService {
             createIndex(createIndex);
         } else
             throw new Exception("Eroare parsare comanda");
+    }
+    public static void insert(Insert insert) throws Exception{
+        if (dbmsRepository.getCurrentDatabase().equals(""))
+            throw new Exception("No database in use!");
+
+        Element rootDataBases = dbmsRepository.getDoc().getRootElement();
+        Element dataBase = rootDataBases.getChild("DataBase");
+
+        Element tableElement = null;
+        String tableName=insert.getTable().getName();
+
+        for (Element element : dataBase.getChildren("Table")) {
+            if (Objects.equals(element.getAttributeValue("tableName"), tableName)) {
+                tableElement = element;
+            }
+        }
+
+        if (tableElement == null) {
+            throw new Exception("Table not found!");
+        }
+        List<String> columns= tableElement.getChild("Structure").getChildren("Attribute").stream().map(line->line.getAttributeValue("attributeName")).toList();
+        if (insert.getColumns()!=null){
+            if(insert.getColumns().size()!= columns.size())
+                throw new Exception("Number of query values and destination fields are not the same.");
+            for (Column column : insert.getColumns()){
+                if(!columns.contains(column.toString()))
+                    throw new Exception( "Table "+tableName+ " has no column named "+column);
+            }
+        }
+
+
+        MongoClient mongoClient = getMongoDbConnection();
+        MongoDatabase database = mongoClient.getDatabase("testSgbd");
+
+        // Creează colecția MongoDB cu numele tabelului SQL
+        MongoCollection<Document> collection = database.getCollection(dbmsRepository.getCurrentDatabase()+tableName);
+
+        List<String> valuesList=((ExpressionList)insert.getItemsList()).getExpressions().stream().map(Object::toString).toList();
+        String primaryKey = valuesList.get(0);
+        String values = valuesList.get(1);
+        for(int i=2;i<valuesList.size();i++)
+            values+="#"+valuesList.get(i);
+
+        Document document = new Document("_id", primaryKey).append("values", values);
+        collection.insertOne(document);
+        mongoClient.close();
     }
 
     public static void createIndex(CreateIndex index) throws Exception {
@@ -389,6 +437,52 @@ public class DBMSService {
 
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    public static MongoClient getMongoDbConnection(){
+        String connectionString = "mongodb+srv://silviu25stoian:llPEl44YGItb6pqw@cluster0.7wfpod0.mongodb.net/?retryWrites=true&w=majority";
+        ServerApi serverApi = ServerApi.builder()
+                .version(ServerApiVersion.V1)
+                .build();
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString(connectionString))
+                .serverApi(serverApi)
+                .build();
+        // Create a new client and connect to the server
+        return MongoClients.create(settings);
+    }
+    public void testMongoDb(){
+        String connectionString = "mongodb+srv://silviu25stoian:llPEl44YGItb6pqw@cluster0.7wfpod0.mongodb.net/?retryWrites=true&w=majority";
+        ServerApi serverApi = ServerApi.builder()
+                .version(ServerApiVersion.V1)
+                .build();
+        MongoClientSettings settings = MongoClientSettings.builder()
+                .applyConnectionString(new ConnectionString(connectionString))
+                .serverApi(serverApi)
+                .build();
+        // Create a new client and connect to the server
+        try (MongoClient mongoClient = MongoClients.create(settings)) {
+            try {
+                // Send a ping to confirm a successful connection
+                MongoDatabase database = mongoClient.getDatabase("testSgbd");
+                //database.runCommand(new Document("ping", 1));
+                //System.out.println("Pinged your deployment. You successfully connected to MongoDB!");
+
+
+                String tableName="persoane";
+                // Creează colecția MongoDB cu numele tabelului SQL
+                MongoCollection<Document> collection = database.getCollection(tableName);
+
+                int primaryKey = 2;
+                String otherAttributes = "Vlad" + "#" + "Stoian";
+                Document document = new Document("_id", primaryKey).append("other_attributes", otherAttributes);
+                collection.insertOne(document);
+                System.out.println("SUCCES");
+                mongoClient.close();
+            } catch (MongoException e) {
+                e.printStackTrace();
+            }
         }
     }
 }
