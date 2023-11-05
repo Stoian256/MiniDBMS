@@ -23,6 +23,7 @@ import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.insert.Insert;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import org.example.entity.Attribute;
 import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
 
@@ -39,7 +40,6 @@ public class DBMSService {
     private static final String regexCreateDatabase = "CREATE\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexDropDatabase = "DROP\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexUseDatabase = "USE\\s+([\\w_]+);";
-
     private static final String DATABASE_NAME = "mini_dbms";
     private static final String DATABASE_NODE = "DataBase";
     private static final String TABLE_NODE = "Table";
@@ -47,6 +47,8 @@ public class DBMSService {
     private static final String DATABASE_NAME_ATTRIBUTE = "dataBaseName";
     private static final String PRIMARY_KEY_NODE = "primaryKey";
     private static final String PRIMARY_KEY_ATTRIBUTE = "pkAttribute";
+    private static final String STRUCTURE_NODE = "Structure";
+    private static final String ATTRIBUTE_NODE = "Attribute";
 
     public DBMSService(DBMSRepository dbmsRepository) {
         this.dbmsRepository = dbmsRepository;
@@ -144,8 +146,7 @@ public class DBMSService {
         String tableName = delete.getTable().getName();
         Element tableElement = validateTableName(tableName);
         Map<String, String> primaryKeys = extractAttributeValues(delete.getWhere());
-        Set<String> primaryKeyAttr = primaryKeys.keySet();
-        validatePrimaryKey(tableElement, primaryKeyAttr);
+        validatePrimaryKey(tableElement, primaryKeys);
         deleteFromMongoDb(tableName, primaryKeys);
     }
 
@@ -192,11 +193,12 @@ public class DBMSService {
 
         return attributeValueMap;
     }
-    private static void validatePrimaryKey(Element table, Set<String> primaryKeyFromWhereCond) throws Exception {
+    private static void validatePrimaryKey(Element table, Map<String, String> primaryKeys) throws Exception {
         Set<String> primaryKeysFromDb = getPrimaryKeysFromDb(table);
-        if (!primaryKeysFromDb.equals(primaryKeyFromWhereCond)) {
+        if (!primaryKeysFromDb.equals(primaryKeys.keySet())) {
             throw new Exception("Invalid arguments in where condition!");
         }
+        validateTypeOfPrimaryKeys(table, primaryKeys);
     }
 
     private static Set<String> getPrimaryKeysFromDb(Element table) {
@@ -204,6 +206,66 @@ public class DBMSService {
                 .flatMap(pk -> pk.getChildren(PRIMARY_KEY_ATTRIBUTE).stream())
                 .map(pkAttr -> pkAttr.getContent(0).getValue())
                 .collect(Collectors.toSet());
+    }
+
+    private static void validateTypeOfPrimaryKeys (Element table,  Map<String, String> primaryKeys) throws Exception {
+        List<Attribute> primaryKeysAttribute = getAttributePkFromDb(table, primaryKeys.keySet());
+        for (Map.Entry<String, String> entry : primaryKeys.entrySet()) {
+            Optional<Attribute> attribute = getAttributeByName(primaryKeysAttribute, entry.getKey());
+            if (attribute.isPresent()) {
+                Attribute attr = attribute.get();
+                String value = entry.getValue();
+                if (attr.getType().equalsIgnoreCase("int")) {
+                    try {
+                        Integer.parseInt(value);
+                    } catch (NumberFormatException e) {
+                        throw new Exception("Invalid attribute type: " + entry.getValue());
+                    }
+                } else if (attr.getType().equalsIgnoreCase("float")) {
+                    try {
+                        Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        throw new Exception("Invalid attribute type: " + entry.getValue());
+                    }
+                } else if (attr.getType().equalsIgnoreCase("double")) {
+                    try {
+                        Double.parseDouble(value);
+                    } catch (NumberFormatException e) {
+                        throw new Exception("Invalid attribute type: " + entry.getValue());
+                    }
+                } else {
+                    int padding = 0;
+                    if(value.startsWith("'") && value.endsWith("'")) {
+                        padding = 2;
+                    }
+                    if (entry.getValue().length() > attr.getLength() + padding) {
+                        throw new Exception("Invalid attribute type: " + entry.getValue());
+                    }
+                }
+            }
+        }
+    }
+
+    private static List<Attribute> getAttributePkFromDb(Element table, Set<String> primaryKeys) {
+        return table.getChildren(STRUCTURE_NODE).stream()
+                .flatMap(attr -> attr.getChildren(ATTRIBUTE_NODE).stream())
+                .map(DBMSService::getAttribute)
+                .filter(attribute -> primaryKeys.contains(attribute.getAttributeName()))
+                .collect(Collectors.toList());
+    }
+
+    private static Optional<Attribute> getAttributeByName(List<Attribute> attributes, String name) {
+        return attributes.stream()
+                .filter(attribute -> attribute.getAttributeName().equals(name))
+                .findFirst();
+    }
+
+    private static Attribute getAttribute(Element attributeFromDb) {
+        String attributeName = attributeFromDb.getAttributeValue("attributeName");
+        String type = attributeFromDb.getAttributeValue("type");
+        int length = Integer.parseInt(attributeFromDb.getAttributeValue("length"));
+        boolean isNull = attributeFromDb.getAttributeValue("isnull").equals("1");
+        return new Attribute(attributeName, type, length, isNull);
     }
 
     private static void deleteFromMongoDb(String tableName, Map<String, String> primaryKeys) throws Exception {
