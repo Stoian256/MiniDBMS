@@ -5,6 +5,11 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.result.DeleteResult;
+import net.sf.jsqlparser.expression.Expression;
+import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
+import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
@@ -13,23 +18,35 @@ import net.sf.jsqlparser.statement.create.index.CreateIndex;
 import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import net.sf.jsqlparser.statement.create.table.Index;
+import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.insert.Insert;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
 
 import java.io.IOException;
-import java.util.Objects;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static org.example.connectionManager.DbConnectionManager.getMongoClient;
 
 public class DBMSService {
     private static DBMSRepository dbmsRepository;
     private static final String regexCreateDatabase = "CREATE\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexDropDatabase = "DROP\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexUseDatabase = "USE\\s+([\\w_]+);";
+
+    private static final String DATABASE_NAME = "mini_dbms";
+    private static final String DATABASE_NODE = "DataBase";
+    private static final String TABLE_NODE = "Table";
+    private static final String TABLE_NAME_ATTRIBUTE = "tableName";
+    private static final String DATABASE_NAME_ATTRIBUTE = "dataBaseName";
+    private static final String PRIMARY_KEY_NODE = "primaryKey";
+    private static final String PRIMARY_KEY_ATTRIBUTE = "pkAttribute";
 
     public DBMSService(DBMSRepository dbmsRepository) {
         this.dbmsRepository = dbmsRepository;
@@ -61,7 +78,11 @@ public class DBMSService {
         Statement statement = CCJSqlParserUtil.parse(sqlCommand);
         if (statement instanceof Insert insert) {
             insert(insert);
-        } else if (statement instanceof CreateTable createTable) {
+        } else if (statement instanceof Delete delete) {
+            deleteFromTable(delete
+            );
+        }
+        else if (statement instanceof CreateTable createTable) {
             createTable(createTable);
         } else if (statement instanceof Drop dropTable) {
             dropTable(dropTable);
@@ -70,7 +91,7 @@ public class DBMSService {
         } else
             throw new Exception("Eroare parsare comanda");
     }
-    public static void insert(Insert insert) throws Exception{
+    public static void insert(Insert insert) throws Exception {
         if (dbmsRepository.getCurrentDatabase().equals(""))
             throw new Exception("No database in use!");
 
@@ -115,6 +136,90 @@ public class DBMSService {
         Document document = new Document("_id", primaryKey).append("values", values);
         collection.insertOne(document);
         mongoClient.close();
+    }
+
+    private static void deleteFromTable(Delete delete) throws Exception {
+        if (dbmsRepository.getCurrentDatabase().equals(""))
+            throw new Exception("No database in use!");
+        String tableName = delete.getTable().getName();
+        Element tableElement = validateTableName(tableName);
+        Map<String, String> primaryKeys = extractAttributeValues(delete.getWhere());
+        Set<String> primaryKeyAttr = primaryKeys.keySet();
+        validatePrimaryKey(tableElement, primaryKeyAttr);
+        deleteFromMongoDb(tableName, primaryKeys);
+    }
+
+    private static Element validateTableName(String tableName) throws Exception {
+        Element rootDataBases = dbmsRepository.getDoc().getRootElement();
+
+        Optional<Element> databaseElement = getDatabaseElement(rootDataBases);
+        if (databaseElement.isPresent()) {
+            Optional<Element> tableElement = getTableByName(databaseElement.get(), tableName);
+            if (tableElement.isEmpty()) {
+                throw new Exception("Table not found!");
+            }
+            return tableElement.get();
+        } else {
+            throw new Exception("Invalid database!");
+        }
+    }
+
+    private static Optional<Element> getDatabaseElement(Element databasesElement) {
+        return databasesElement.getChildren(DATABASE_NODE).stream()
+                .filter(db -> db.getAttributeValue(DATABASE_NAME_ATTRIBUTE).equals(dbmsRepository.getCurrentDatabase()))
+                .findFirst();
+    }
+
+    private static Optional<Element> getTableByName(Element databaseElement, String tableName) {
+        return databaseElement.getChildren(TABLE_NODE).stream().
+                filter(table -> table.getAttributeValue(TABLE_NAME_ATTRIBUTE).equals(tableName))
+                .findFirst();
+    }
+
+    private static Map<String, String> extractAttributeValues(Expression expression) {
+        Map<String, String> attributeValueMap = new LinkedHashMap<>();
+
+        if (expression instanceof AndExpression andExpression) {
+            attributeValueMap.putAll(extractAttributeValues(andExpression.getLeftExpression()));
+            attributeValueMap.putAll(extractAttributeValues(andExpression.getRightExpression()));
+        } else if (expression instanceof EqualsTo equalsTo) {
+            if (equalsTo.getLeftExpression() instanceof Column column) {
+                String attributeName = column.getColumnName();
+                String attributeValue = equalsTo.getRightExpression().toString();
+                attributeValueMap.put(attributeName, attributeValue);
+            }
+        }
+
+        return attributeValueMap;
+    }
+    private static void validatePrimaryKey(Element table, Set<String> primaryKeyFromWhereCond) throws Exception {
+        Set<String> primaryKeysFromDb = getPrimaryKeysFromDb(table);
+        if (!primaryKeysFromDb.equals(primaryKeyFromWhereCond)) {
+            throw new Exception("Invalid arguments in where condition!");
+        }
+    }
+
+    private static Set<String> getPrimaryKeysFromDb(Element table) {
+        return table.getChildren(PRIMARY_KEY_NODE).stream()
+                .flatMap(pk -> pk.getChildren(PRIMARY_KEY_ATTRIBUTE).stream())
+                .map(pkAttr -> pkAttr.getContent(0).getValue())
+                .collect(Collectors.toSet());
+    }
+
+    private static void deleteFromMongoDb(String tableName, Map<String, String> primaryKeys) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase()+tableName);
+            String concatenatedKey = String.join("#", primaryKeys.values());
+            Bson filter = Filters.eq("_id", concatenatedKey);
+            DeleteResult result = collection.deleteOne(filter);
+            if (result.getDeletedCount() < 1) {
+                throw new Exception("No elements were deleted.");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new Exception(e.getMessage());
+        }
     }
 
     public static void createIndex(CreateIndex index) throws Exception {
@@ -451,38 +556,5 @@ public class DBMSService {
                 .build();
         // Create a new client and connect to the server
         return MongoClients.create(settings);
-    }
-    public void testMongoDb(){
-        String connectionString = "mongodb+srv://silviu25stoian:llPEl44YGItb6pqw@cluster0.7wfpod0.mongodb.net/?retryWrites=true&w=majority";
-        ServerApi serverApi = ServerApi.builder()
-                .version(ServerApiVersion.V1)
-                .build();
-        MongoClientSettings settings = MongoClientSettings.builder()
-                .applyConnectionString(new ConnectionString(connectionString))
-                .serverApi(serverApi)
-                .build();
-        // Create a new client and connect to the server
-        try (MongoClient mongoClient = MongoClients.create(settings)) {
-            try {
-                // Send a ping to confirm a successful connection
-                MongoDatabase database = mongoClient.getDatabase("testSgbd");
-                //database.runCommand(new Document("ping", 1));
-                //System.out.println("Pinged your deployment. You successfully connected to MongoDB!");
-
-
-                String tableName="persoane";
-                // Creează colecția MongoDB cu numele tabelului SQL
-                MongoCollection<Document> collection = database.getCollection(tableName);
-
-                int primaryKey = 2;
-                String otherAttributes = "Vlad" + "#" + "Stoian";
-                Document document = new Document("_id", primaryKey).append("other_attributes", otherAttributes);
-                collection.insertOne(document);
-                System.out.println("SUCCES");
-                mongoClient.close();
-            } catch (MongoException e) {
-                e.printStackTrace();
-            }
-        }
     }
 }
