@@ -2,6 +2,7 @@ package org.example.server.service;
 
 import com.mongodb.*;
 import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
@@ -22,6 +23,7 @@ import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.insert.Insert;
 import org.bson.Document;
 import org.bson.conversions.Bson;
+import org.example.entity.Attribute;
 import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
 
@@ -46,6 +48,8 @@ public class DBMSService {
     private static final String DATABASE_NAME_ATTRIBUTE = "dataBaseName";
     private static final String PRIMARY_KEY_NODE = "primaryKey";
     private static final String PRIMARY_KEY_ATTRIBUTE = "pkAttribute";
+    private static final String STRUCTURE_NODE = "Structure";
+    private static final String ATTRIBUTE_NODE = "Attribute";
 
     public DBMSService(DBMSRepository dbmsRepository) {
         this.dbmsRepository = dbmsRepository;
@@ -156,8 +160,7 @@ public class DBMSService {
         String tableName = delete.getTable().getName();
         Element tableElement = validateTableName(tableName);
         Map<String, String> primaryKeys = extractAttributeValues(delete.getWhere());
-        Set<String> primaryKeyAttr = primaryKeys.keySet();
-        validatePrimaryKey(tableElement, primaryKeyAttr);
+        validatePrimaryKey(tableElement, primaryKeys);
         deleteFromMongoDb(tableName, primaryKeys);
     }
 
@@ -204,12 +207,12 @@ public class DBMSService {
 
         return attributeValueMap;
     }
-
-    private static void validatePrimaryKey(Element table, Set<String> primaryKeyFromWhereCond) throws Exception {
+    private static void validatePrimaryKey(Element table, Map<String, String> primaryKeys) throws Exception {
         Set<String> primaryKeysFromDb = getPrimaryKeysFromDb(table);
-        if (!primaryKeysFromDb.equals(primaryKeyFromWhereCond)) {
+        if (!primaryKeysFromDb.equals(primaryKeys.keySet())) {
             throw new Exception("Invalid arguments in where condition!");
         }
+        validateTypeOfPrimaryKeys(table, primaryKeys);
     }
 
     private static Set<String> getPrimaryKeysFromDb(Element table) {
@@ -219,10 +222,70 @@ public class DBMSService {
                 .collect(Collectors.toSet());
     }
 
+    private static void validateTypeOfPrimaryKeys (Element table,  Map<String, String> primaryKeys) throws Exception {
+        List<Attribute> primaryKeysAttribute = getAttributePkFromDb(table, primaryKeys.keySet());
+        for (Map.Entry<String, String> entry : primaryKeys.entrySet()) {
+            Optional<Attribute> attribute = getAttributeByName(primaryKeysAttribute, entry.getKey());
+            if (attribute.isPresent()) {
+                Attribute attr = attribute.get();
+                String value = entry.getValue();
+                if (attr.getType().equalsIgnoreCase("int")) {
+                    try {
+                        Integer.parseInt(value);
+                    } catch (NumberFormatException e) {
+                        throw new Exception("Invalid attribute type: " + entry.getValue());
+                    }
+                } else if (attr.getType().equalsIgnoreCase("float")) {
+                    try {
+                        Float.parseFloat(value);
+                    } catch (NumberFormatException e) {
+                        throw new Exception("Invalid attribute type: " + entry.getValue());
+                    }
+                } else if (attr.getType().equalsIgnoreCase("double")) {
+                    try {
+                        Double.parseDouble(value);
+                    } catch (NumberFormatException e) {
+                        throw new Exception("Invalid attribute type: " + entry.getValue());
+                    }
+                } else {
+                    int padding = 0;
+                    if(value.startsWith("'") && value.endsWith("'")) {
+                        padding = 2;
+                    }
+                    if (entry.getValue().length() > attr.getLength() + padding) {
+                        throw new Exception("Invalid attribute type: " + entry.getValue());
+                    }
+                }
+            }
+        }
+    }
+
+    private static List<Attribute> getAttributePkFromDb(Element table, Set<String> primaryKeys) {
+        return table.getChildren(STRUCTURE_NODE).stream()
+                .flatMap(attr -> attr.getChildren(ATTRIBUTE_NODE).stream())
+                .map(DBMSService::getAttribute)
+                .filter(attribute -> primaryKeys.contains(attribute.getAttributeName()))
+                .collect(Collectors.toList());
+    }
+
+    private static Optional<Attribute> getAttributeByName(List<Attribute> attributes, String name) {
+        return attributes.stream()
+                .filter(attribute -> attribute.getAttributeName().equals(name))
+                .findFirst();
+    }
+
+    private static Attribute getAttribute(Element attributeFromDb) {
+        String attributeName = attributeFromDb.getAttributeValue("attributeName");
+        String type = attributeFromDb.getAttributeValue("type");
+        int length = Integer.parseInt(attributeFromDb.getAttributeValue("length"));
+        boolean isNull = attributeFromDb.getAttributeValue("isnull").equals("1");
+        return new Attribute(attributeName, type, length, isNull);
+    }
+
     private static void deleteFromMongoDb(String tableName, Map<String, String> primaryKeys) throws Exception {
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
-            MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase()+tableName);
             String concatenatedKey = String.join("#", primaryKeys.values());
             Bson filter = Filters.eq("_id", concatenatedKey);
             DeleteResult result = collection.deleteOne(filter);
@@ -418,7 +481,8 @@ public class DBMSService {
                 if (type.equalsIgnoreCase("char") || type.equalsIgnoreCase("varchar")) {
                     length = column.getColDataType().getArgumentsStringList().size() > 0 ? Integer.parseInt(column.getColDataType().getArgumentsStringList().get(0)) : 30;
 
-                } else if (type.equalsIgnoreCase("int") || type.equalsIgnoreCase("double"))
+                }
+                else if(type.equalsIgnoreCase("int") || type.equalsIgnoreCase("double"))
                     length = 64;
                 attributeElement.setAttribute("length", String.valueOf(length));
                 attributeElement.setAttribute("isnull", String.valueOf(isNull));
@@ -436,7 +500,7 @@ public class DBMSService {
                 foreignKeysElement = new Element("foreignKeys");
             }
 
-            if (createTable.getIndexes() != null) {
+            if (createTable.getIndexes()!=null) {
                 for (Index index : createTable.getIndexes()) {
                     if (indexFilesElement.getChildren("IndexFile").stream().anyMatch(column -> column.getAttributeValue("indexName").equals(index.getColumnsNames().get(0) + ".ind")))
                         throw new Exception("An Index with same name already exist!");
@@ -512,7 +576,7 @@ public class DBMSService {
                                     refrencedTable = element;
                                 }
                             }
-                            if (refrencedTable == null)
+                            if (refrencedTable==null)
                                 throw new Exception("Referenced table not found!");
 
                             for (String columnName : index.getColumnsNames()) {
@@ -529,8 +593,8 @@ public class DBMSService {
                             referencesElement.addContent(refTableElement);
 
                             for (String refColumn : referencedColumns.split(",")) {
-                                if (!refrencedTable.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(refColumn)))
-                                    throw new Exception("Referenced column " + refColumn + " not found!");
+                                if(!refrencedTable.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(refColumn)))
+                                    throw new Exception("Referenced column "+refColumn+" not found!");
                                 Element fkAttributeElement = new Element("fkAttribute");
                                 fkAttributeElement.setText(refColumn.trim());
                                 foreignKeyElement.addContent(fkAttributeElement);
