@@ -10,18 +10,10 @@ import java.util.Optional;
 public class DbConnectionManager {
     private static final String CONNECTION_STRING = "mongodb+srv://mini_dbms_user:znyRpmoyRBZSdUum@cluster0.7wfpod0.mongodb.net/?retryWrites=true&w=majority";
 
-    public static Optional<MongoDatabase> getMongoDatabase(String databaseName) {
+    public static MongoClient getMongoClient() {
         ServerApi serverApi = getServerApi();
         MongoClientSettings settings = getMongoClientSettings(serverApi);
-
-        try (MongoClient mongoClient = MongoClients.create(settings)) {
-            try {
-                return Optional.of(mongoClient.getDatabase(databaseName));
-            } catch (MongoException e) {
-                e.printStackTrace();
-            }
-        }
-        return Optional.empty();
+        return MongoClients.create(settings);
     }
 
     private static ServerApi getServerApi() {
