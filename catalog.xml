@@ -20,5 +20,27 @@
         </IndexFile>
       </IndexFiles>
     </Table>
+    <Table tableName="Users" fileName="Users.csv">
+      <Structure>
+        <Attribute attributeName="UserId" type="int" length="64" isnull="0" />
+        <Attribute attributeName="Password" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="FirstName" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="LastName" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>UserId</pkAttribute>
+        <pkAttribute>Password</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile indexName="UserId.ind" keyLength="64" isUnique="1" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>UserId</IAttribute>
+            <IAttribute>Password</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
   </DataBase>
 </Databases>

@@ -14,7 +14,17 @@ CREATE UNIQUE INDEX IX_User_Name ON Specialization (Name, Age);
 CREATE UNIQUE INDEX IX_User_Name ON Specialization (SpecName, Language);
 
 CREATE TABLE Users ( UserId int NOT NULL, Password varchar(50), FirstName varchar(50), LastName varchar(50), PRIMARY KEY (UserId,Password));
+
 INSERT INTO Users (UserId, Password, FirstName, LastName) VALUES (1, password, John, Doe);
 
 INSERT INTO Persons (PersonID, FirstName, LastName) VALUES (1, John, Doe);
 INSERT INTO Persons VALUES (2, Silviu, Stoian);
+
+DELETE FROM Persons WHERE PersonID = 1;
+DELETE FROM Person WHERE PersonID = 1;
+DELETE FROM Persons WHERE PersonName = 1;
+
+DELETE FROM Users WHERE UserId = 1 AND Password=password;
+
+UPDATE Persons SET FirstName= AAAA WHERE PersonID = 1;
+UPDATE Persons SET LastName= BBB WHERE PersonID = 1;

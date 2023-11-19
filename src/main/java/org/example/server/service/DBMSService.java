@@ -1,10 +1,7 @@
 package org.example.server.service;
 
 import com.mongodb.*;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
-import com.mongodb.client.MongoCollection;
-import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.*;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.result.DeleteResult;
 import net.sf.jsqlparser.expression.Expression;
@@ -21,6 +18,7 @@ import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.update.Update;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.example.entity.Attribute;
@@ -86,12 +84,81 @@ public class DBMSService {
             );
         } else if (statement instanceof CreateTable createTable) {
             createTable(createTable);
+        } else if (statement instanceof Update update) {
+            update(update);
         } else if (statement instanceof Drop dropTable) {
             dropTable(dropTable);
         } else if (statement instanceof CreateIndex createIndex) {
             createIndex(createIndex);
         } else
             throw new Exception("Eroare parsare comanda");
+    }
+
+    public static void update(Update update) throws Exception {
+        if (dbmsRepository.getCurrentDatabase().equals(""))
+            throw new Exception("No database in use!");
+
+
+        String tableName = update.getTable().getName();
+        Element tableElement = validateTableName(tableName);
+
+        List<Column> updateColumns = update.getColumns();
+        List<Expression> values = update.getExpressions();
+
+
+        List<String> attributes = tableElement.getChild("Structure").getChildren("Attribute").stream().map(line -> line.getAttributeValue("attributeName")).toList();
+
+        validateUpdateColumns(updateColumns, attributes);
+        String primaryKey = update.getWhere().toString().split("=")[1].trim();
+
+        String valuesList = computeUpdateKeyValue(attributes, updateColumns, values, Arrays.stream(findRecordValues(tableName, primaryKey).split("#")).toList());
+        updateInMongoDb(tableName, primaryKey, valuesList);
+    }
+
+    private static void updateInMongoDb(String tableName, String key, String values) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+
+            Document filter = new Document("_id", key); // Caută înregistrarea după cheia primară
+            Document updateDoc = new Document("$set", new Document("values", values)); // Specifică coloana și noua valoare
+
+            collection.updateOne(filter, updateDoc);
+
+        } catch (Exception e) {
+            throw new Exception("A apărut o eroare la actualizarea înregistrării.");
+        }
+    }
+
+    private static String computeUpdateKeyValue(List<String> columns, List<Column> updateColumns1, List<Expression> values, List<String> oldValues) {
+        List<String> updateColumns = updateColumns1.stream().map(elem -> elem.getColumnName().toString()).toList();
+        int j = 0;
+        List<String> othersList = new ArrayList<>();
+        for (int i = 1; i < columns.size(); i++) {
+            System.out.println(i);
+            String column = columns.get(i);
+
+            if (updateColumns.contains(column)) {
+                String value = values.get(j).toString();
+                j++;
+                othersList.add(value);
+
+            } else {
+                othersList.add(oldValues.get(j));
+
+            }
+        }
+        return String.join("#", othersList);
+    }
+
+    public static String findRecordValues(String tableName, String primaryKeyValue) throws Exception {
+        MongoClient client = getMongoClient();
+        MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+        MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+        Document filter = new Document("_id", primaryKeyValue); // Caută înregistrarea după cheia primară
+        FindIterable<Document> result = collection.find(filter);
+        return result.first().get("values").toString();
+
     }
 
     public static void insert(Insert insert) throws Exception {
@@ -109,7 +176,7 @@ public class DBMSService {
         List<String> attributes = tableElement.getChild("Structure").getChildren("Attribute").stream().map(line -> line.getAttributeValue("attributeName")).toList();
         List<Element> primaryKeyElements = tableElement.getChild("primaryKey").getChildren("pkAttribute");
 
-        validateInsertColumns(insertColumns, attributes);
+        validateColumns(insertColumns, attributes);
         List<String> keyValueList = computeInsertKeyValue(attributes, primaryKeyElements, values);
         insertInMongoDb(tableName, keyValueList.get(0), keyValueList.get(1));
     }
@@ -122,14 +189,24 @@ public class DBMSService {
             Document document = new Document("_id", key).append("values", values);
             collection.insertOne(document);
         } catch (Exception e) {
-            throw new Exception(e.getMessage());
+            throw new Exception("Primary key constraint violated!");
         }
     }
 
-    private static void validateInsertColumns(List<Column> columns, List<String> attributes) throws Exception {
+    private static void validateColumns(List<Column> columns, List<String> attributes) throws Exception {
         if (columns != null) {
             if (columns.size() != attributes.size())
                 throw new Exception("Number of query values and destination fields are not the same.");
+            for (Column column : columns) {
+                if (!attributes.contains(column.toString()))
+                    throw new Exception("Table has no column named " + column);
+            }
+
+        }
+    }
+
+    private static void validateUpdateColumns(List<Column> columns, List<String> attributes) throws Exception {
+        if (columns != null) {
             for (Column column : columns) {
                 if (!attributes.contains(column.toString()))
                     throw new Exception("Table has no column named " + column);
@@ -207,6 +284,7 @@ public class DBMSService {
 
         return attributeValueMap;
     }
+
     private static void validatePrimaryKey(Element table, Map<String, String> primaryKeys) throws Exception {
         Set<String> primaryKeysFromDb = getPrimaryKeysFromDb(table);
         if (!primaryKeysFromDb.equals(primaryKeys.keySet())) {
@@ -222,7 +300,7 @@ public class DBMSService {
                 .collect(Collectors.toSet());
     }
 
-    private static void validateTypeOfPrimaryKeys (Element table,  Map<String, String> primaryKeys) throws Exception {
+    private static void validateTypeOfPrimaryKeys(Element table, Map<String, String> primaryKeys) throws Exception {
         List<Attribute> primaryKeysAttribute = getAttributePkFromDb(table, primaryKeys.keySet());
         for (Map.Entry<String, String> entry : primaryKeys.entrySet()) {
             Optional<Attribute> attribute = getAttributeByName(primaryKeysAttribute, entry.getKey());
@@ -249,7 +327,7 @@ public class DBMSService {
                     }
                 } else {
                     int padding = 0;
-                    if(value.startsWith("'") && value.endsWith("'")) {
+                    if (value.startsWith("'") && value.endsWith("'")) {
                         padding = 2;
                     }
                     if (entry.getValue().length() > attr.getLength() + padding) {
@@ -285,7 +363,7 @@ public class DBMSService {
     private static void deleteFromMongoDb(String tableName, Map<String, String> primaryKeys) throws Exception {
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
-            MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase()+tableName);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
             String concatenatedKey = String.join("#", primaryKeys.values());
             Bson filter = Filters.eq("_id", concatenatedKey);
             DeleteResult result = collection.deleteOne(filter);
@@ -481,8 +559,7 @@ public class DBMSService {
                 if (type.equalsIgnoreCase("char") || type.equalsIgnoreCase("varchar")) {
                     length = column.getColDataType().getArgumentsStringList().size() > 0 ? Integer.parseInt(column.getColDataType().getArgumentsStringList().get(0)) : 30;
 
-                }
-                else if(type.equalsIgnoreCase("int") || type.equalsIgnoreCase("double"))
+                } else if (type.equalsIgnoreCase("int") || type.equalsIgnoreCase("double"))
                     length = 64;
                 attributeElement.setAttribute("length", String.valueOf(length));
                 attributeElement.setAttribute("isnull", String.valueOf(isNull));
@@ -500,7 +577,7 @@ public class DBMSService {
                 foreignKeysElement = new Element("foreignKeys");
             }
 
-            if (createTable.getIndexes()!=null) {
+            if (createTable.getIndexes() != null) {
                 for (Index index : createTable.getIndexes()) {
                     if (indexFilesElement.getChildren("IndexFile").stream().anyMatch(column -> column.getAttributeValue("indexName").equals(index.getColumnsNames().get(0) + ".ind")))
                         throw new Exception("An Index with same name already exist!");
@@ -576,7 +653,7 @@ public class DBMSService {
                                     refrencedTable = element;
                                 }
                             }
-                            if (refrencedTable==null)
+                            if (refrencedTable == null)
                                 throw new Exception("Referenced table not found!");
 
                             for (String columnName : index.getColumnsNames()) {
@@ -593,8 +670,8 @@ public class DBMSService {
                             referencesElement.addContent(refTableElement);
 
                             for (String refColumn : referencedColumns.split(",")) {
-                                if(!refrencedTable.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(refColumn)))
-                                    throw new Exception("Referenced column "+refColumn+" not found!");
+                                if (!refrencedTable.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(refColumn)))
+                                    throw new Exception("Referenced column " + refColumn + " not found!");
                                 Element fkAttributeElement = new Element("fkAttribute");
                                 fkAttributeElement.setText(refColumn.trim());
                                 foreignKeyElement.addContent(fkAttributeElement);

@@ -25,7 +25,6 @@ public class Server {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("S-a conectat un client.");
 
-
                 BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
                 PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
 
