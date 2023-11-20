@@ -174,7 +174,7 @@ public class DBMSService {
         List<String> attributes = tableElement.getChild("Structure").getChildren("Attribute").stream().map(line -> line.getAttributeValue("attributeName")).toList();
         List<Element> primaryKeyElements = tableElement.getChild("primaryKey").getChildren("pkAttribute");
         List<ForeignKey> foreignKeys = getForeignKeyFromCatalog(tableElement);
-        String primaryKeyIndexName = dbmsRepository.getCurrentDatabase() + tableName + "Ind" + String.join("", primaryKeyElements.stream().map(el -> el.getContent().get(0).getValue()).toList());
+        String primaryKeyIndexName = dbmsRepository.getCurrentDatabase() + tableName + "PkInd" + String.join("", primaryKeyElements.stream().map(el -> el.getContent().get(0).getValue()).toList());
 
         validateColumns(insertColumns, attributes);
         List<String> keyValueList = computeInsertKeyValue(attributes, primaryKeyElements, values);
@@ -182,13 +182,14 @@ public class DBMSService {
         Element indexFiles = tableElement.getChild("IndexFiles");
         Map<String, String> attributeValueMap = computeAttributeValueMap(insertColumns, values);
         processIndexFiles(indexFiles, attributeValueMap, keyValueList.get(0), primaryKeyIndexName);
+        saveForeignKeys(foreignKeys, attributeValueMap, tableName, keyValueList.get(0));
         insertInMongoDb(dbmsRepository.getCurrentDatabase() + tableName, keyValueList.get(0), keyValueList.get(1));
     }
 
     private static void processIndexFiles(Element indexFiles, Map<String, String> attributeValueMap, String primaryKey, String primaryKeyIndexName) throws Exception {
         for (Element indexFile : indexFiles.getChildren("IndexFile")) {
             String indexName = indexFile.getAttributeValue("indexName").split("\\.")[0];
-            if (Objects.equals(indexName, primaryKeyIndexName))
+            if (Objects.equals(indexName, primaryKeyIndexName) || indexName.contains("FkInd"))
                 continue;
 
             String isUnique = indexFile.getAttributeValue("isUnique");
@@ -207,9 +208,44 @@ public class DBMSService {
         }
     }
 
+    private static void saveForeignKeys(List<ForeignKey> foreignKeys, Map<String, String> attributeValueMap, String tableName, String primaryKey) throws Exception {
+        validateForeignKeys(foreignKeys, attributeValueMap);
+        for (int index = 0; index < foreignKeys.size(); index++) {
+            saveForeignKey(foreignKeys.get(index), attributeValueMap, tableName, primaryKey);
+        }
+    }
+
+    private static void saveForeignKey(ForeignKey foreignKey, Map<String, String> attributeValueMap, String tableName, String primaryKey) throws Exception {
+        String collectionName = dbmsRepository.getCurrentDatabase() + tableName + "FkInd" + String.join("", String.join("", foreignKey.getAttributes()) + "Ref" + foreignKey.getRefTableName());
+        List<String> foreignKeyValue = getForeignKeyValue(foreignKey, attributeValueMap);
+        updateIndexInMongoDb(collectionName, String.join("#", foreignKeyValue), primaryKey);
+    }
+
+    private static void validateForeignKeys(List<ForeignKey> foreignKeys, Map<String, String> attributeValueMap) throws Exception {
+        for (ForeignKey foreignKey : foreignKeys) {
+            List<String> foreignKeyValue = getForeignKeyValue(foreignKey, attributeValueMap);
+            validateForeignKey(foreignKey.getRefTableName(), foreignKeyValue);
+        }
+    }
+
+    private static List<String> getForeignKeyValue(ForeignKey foreignKey, Map<String, String> attributeValueMap) {
+        return foreignKey.getAttributes().stream()
+                .map(attributeValueMap::get)
+                .toList();
+    }
+
+    private static void validateForeignKey(String refTable, List<String> foreignKeyValue) throws Exception {
+        String collectionName =dbmsRepository.getCurrentDatabase() + refTable;
+        List<String> primaryKeyFromRefTable = getValuesForKey(collectionName, String.join("#", foreignKeyValue));
+        if (primaryKeyFromRefTable.isEmpty()) {
+            throw new Exception("Foreign key constraint violated!");
+        }
+    }
+
     private static List<ForeignKey> getForeignKeyFromCatalog(Element tableElement) {
         List<ForeignKey> foreignKeys = new ArrayList<>();
-        for (Element foreignKeyElement : tableElement.getChildren("foreignKey")) {
+        Element foreignKeysElement = tableElement.getChild("foreignKeys");
+        for (Element foreignKeyElement : foreignKeysElement.getChildren("foreignKey")) {
             foreignKeys.add(getForeignKeyFromElement(foreignKeyElement));
         }
 
@@ -335,6 +371,8 @@ public class DBMSService {
         Element tableElement = validateTableName(tableName);
         Map<String, String> primaryKeys = extractAttributeValues(delete.getWhere());
         validatePrimaryKey(tableElement, primaryKeys);
+        Map<String, List<ForeignKey>> foreignKeys = getForeignKeyFromCatalogByRefTable(tableElement.getParentElement(), tableName);
+        validateForeignKeyForDelete(foreignKeys, primaryKeys.keySet(), String.join("#", primaryKeys.values()));
         deleteFromMongoDb(tableName, primaryKeys);
     }
 
@@ -382,6 +420,48 @@ public class DBMSService {
         return attributeValueMap;
     }
 
+    private static Map<String, List<ForeignKey>> getForeignKeyFromCatalogByRefTable(Element databaseElement, String refTable) {
+        Map<String, List<ForeignKey>> foreignKeyMap = new HashMap<>();
+        for (Element tableElement : databaseElement.getChildren("Table")) {
+            Element foreignKeysElement = tableElement.getChild("foreignKeys");
+            String tableName = tableElement.getAttributeValue("tableName");
+            for (Element foreignKeyElement : foreignKeysElement.getChildren("foreignKey")) {
+                ForeignKey foreignKey = getForeignKeyFromElementByRefTable(foreignKeyElement, refTable);
+                if (foreignKey != null) {
+                    foreignKeyMap.computeIfAbsent(tableName, k -> new ArrayList<>()).add(foreignKey);
+                }
+            }
+        }
+        return foreignKeyMap;
+    }
+
+    private static ForeignKey getForeignKeyFromElementByRefTable(Element foreignKeyElement, String refTable) {
+        List<String> attributes = foreignKeyElement.getChildren("fkAttribute").stream()
+                .map(Element::getText)
+                .toList();
+        Element referencesElement = foreignKeyElement.getChild("references");
+        if (referencesElement.getChild("refTable").getText().equals(refTable)) {
+            List<String> refAttributes = referencesElement.getChildren("refAttribute").stream()
+                    .map(Element::getText)
+                    .toList();
+            return new ForeignKey(refTable, attributes, refAttributes);
+        }
+        return null;
+    }
+
+    private static void validateForeignKeyForDelete(Map<String, List<ForeignKey>> foreignKeyMap, Set<String> primaryKey, String value) throws Exception {
+        for (Map.Entry<String, List<ForeignKey>> entry : foreignKeyMap.entrySet()) {
+            for (ForeignKey foreignKey : entry.getValue()) {
+                if (new HashSet<>(foreignKey.getRefAttributeList()).containsAll(primaryKey)) {
+                    String collectionName = dbmsRepository.getCurrentDatabase() + entry.getKey() + "FkInd" + String.join("", String.join("", foreignKey.getAttributes()) + "Ref" + foreignKey.getRefTableName());
+                    List<String> primaryKeyFromRefTable = getValuesForKey(collectionName, value);
+                    if (!primaryKeyFromRefTable.isEmpty()) {
+                        throw new Exception("Foreign key constraint violated!");
+                    }
+                }
+            }
+        }
+    }
     private static void validatePrimaryKey(Element table, Map<String, String> primaryKeys) throws Exception {
         Set<String> primaryKeysFromDb = getPrimaryKeysFromDb(table);
         if (!primaryKeysFromDb.equals(primaryKeys.keySet())) {
@@ -595,7 +675,7 @@ public class DBMSService {
                     dataBase = element;
                 }
             }
-
+            validateDropTable(dataBase, dropTable.getName().toString());
             for (Element element : dataBase.getChildren("Table")) {
                 if (element.getAttributeValue("tableName").equals(dropTable.getName().toString())) {
                     tableFound = true;
@@ -609,6 +689,17 @@ public class DBMSService {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private static void validateDropTable(Element dataBase, String refTable) throws Exception {
+        for (Element tableElement : dataBase.getChildren("Table")) {
+            for (Element fKeyElement : tableElement.getChild("foreignKeys").getChildren("foreignKey")) {
+                if (fKeyElement.getChild("references").getChild("refTable").getText().equals(refTable)) {
+                    throw new Exception("Foreign key constraint violated!");
+                }
+            }
+        }
+
     }
 
     public static void createTable(CreateTable createTable) throws Exception {
@@ -627,7 +718,7 @@ public class DBMSService {
         try {
 
             String tableName = createTable.getTable().getName();
-            String fileName = tableName + ".csv";
+            String fileName = dbmsRepository.getCurrentDatabase() + tableName;
             int rowLength = 0; //calculam in functie de nr coloane
 
             // Crearea elementului radacina "<Table>"
@@ -663,7 +754,8 @@ public class DBMSService {
 
                 if (column.getColumnSpecs() != null && column.getColumnSpecs().get(0).equalsIgnoreCase("UNIQUE")) {
                     Element indexFileElement = new Element("IndexFile");
-                    indexFileElement.setAttribute("indexName", attributeName + ".ind");
+                    String indexName = dbmsRepository.getCurrentDatabase() + tableName + "UqInd" + attributeName;
+                    indexFileElement.setAttribute("indexName", indexName);
                     indexFileElement.setAttribute("keyLength", "30");
                     indexFileElement.setAttribute("isUnique", "1");
                     indexFileElement.setAttribute("indexType", "BTree");
@@ -681,8 +773,7 @@ public class DBMSService {
 
                     indexFileElement.addContent(indexAttributesElement);
                     indexFilesElement.addContent(indexFileElement);
-                    String collectionName = dbmsRepository.getCurrentDatabase() + "Unique" + tableName + attributeName;
-                    createCollection(collectionName);
+                    createCollection(indexName);
                 }
             }
             if (foreignKeysElement == null) {
@@ -696,7 +787,8 @@ public class DBMSService {
 
                     if (index.getType().equals("PRIMARY KEY")) {
                         Element indexFileElement = new Element("IndexFile");
-                        indexFileElement.setAttribute("indexName", dbmsRepository.getCurrentDatabase() + tableName + "Ind" + String.join("", index.getColumnsNames()));
+                        String indexName = dbmsRepository.getCurrentDatabase() + tableName + "PkInd" + String.join("", index.getColumnsNames());
+                        indexFileElement.setAttribute("indexName", indexName);
                         indexFileElement.setAttribute("keyLength", "64");
                         indexFileElement.setAttribute("isUnique", "1");
                         indexFileElement.setAttribute("indexType", "BTree");
@@ -720,7 +812,8 @@ public class DBMSService {
                         //pentru index
                         // Adăugați elementul IndexFiles pentru index
                         Element indexFileElement = new Element("IndexFile");
-                        indexFileElement.setAttribute("indexName", dbmsRepository.getCurrentDatabase() + tableName + "Ind" + String.join("", index.getColumnsNames()));
+                        String indexName = dbmsRepository.getCurrentDatabase() + tableName + "UqInd" + String.join("", index.getColumnsNames());
+                        indexFileElement.setAttribute("indexName", indexName);
                         indexFileElement.setAttribute("keyLength", "30");
                         indexFileElement.setAttribute("isUnique", "1");
                         indexFileElement.setAttribute("indexType", "BTree");
@@ -740,12 +833,18 @@ public class DBMSService {
                         }
                         indexFileElement.addContent(indexAttributesElement);
                         indexFilesElement.addContent(indexFileElement);
-                        String collectionName = dbmsRepository.getCurrentDatabase() + "Unique" + tableName + String.join("", index.getColumnsNames());
-                        createCollection(collectionName);
+                        createCollection(indexName);
                     }
 
 
                     if (index.getType().equals("FOREIGN KEY")) {
+                        Element indexFileElement = new Element("IndexFile");
+                        String indexName = "";
+                        indexFileElement.setAttribute("keyLength", "64");
+                        indexFileElement.setAttribute("isUnique", "0");
+                        indexFileElement.setAttribute("indexType", "BTree");
+                        Element indexAttributesElement = new Element("IndexAttributes");
+
                         String foreignKeyPattern = "FOREIGN KEY \\(([^)]+)\\) REFERENCES ([^(]+)\\(([^)]+)\\)";
                         Pattern pattern = Pattern.compile(foreignKeyPattern);
                         Matcher matcher = pattern.matcher(index.toString());
@@ -756,6 +855,9 @@ public class DBMSService {
                         if (matcher.find()) {
                             String referencedTable = matcher.group(2);
                             String referencedColumns = matcher.group(3);
+
+                            indexName = dbmsRepository.getCurrentDatabase() + tableName + "FkInd" + String.join("", String.join("", index.getColumnsNames()) + "Ref" + referencedTable);
+                            indexFileElement.setAttribute("indexName", indexName);
 
                             Element refrencedTable = null;
                             Element dataBase = rootDataBases.getChild("DataBase");
@@ -771,7 +873,14 @@ public class DBMSService {
                                 Element fkAttributeElement = new Element("fkAttribute");
                                 fkAttributeElement.setText(columnName);
                                 foreignKeyElement.addContent(fkAttributeElement);
+
+                                Element iAttributeElement = new Element("IAttribute");
+                                iAttributeElement.setText(columnName);
+                                indexAttributesElement.addContent(iAttributeElement);
                             }
+
+                            indexFileElement.addContent(indexAttributesElement);
+                            indexFilesElement.addContent(indexFileElement);
 
                             Element referencesElement = new Element("references");
                             foreignKeyElement.addContent(referencesElement);
@@ -781,15 +890,14 @@ public class DBMSService {
                             referencesElement.addContent(refTableElement);
 
                             for (String refColumn : referencedColumns.split(",")) {
-                                if (!refrencedTable.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(refColumn)))
+                                if (!refrencedTable.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(refColumn.strip())))
                                     throw new Exception("Referenced column " + refColumn + " not found!");
-                                Element fkAttributeElement = new Element("fkAttribute");
+                                Element fkAttributeElement = new Element("refAttribute");
                                 fkAttributeElement.setText(refColumn.trim());
-                                foreignKeyElement.addContent(fkAttributeElement);
+                                referencesElement.addContent(fkAttributeElement);
                             }
                         }
-                        String collectionName = dbmsRepository.getCurrentDatabase() + "ForeignKey7" + tableName + String.join("", index.getColumnsNames());
-                        createCollection(collectionName);
+                        createCollection(indexName);
                     }
                 }
             }
@@ -805,6 +913,7 @@ public class DBMSService {
 
             database.addContent(rootElement);
             dbmsRepository.saveToFile();
+            createCollection(fileName);
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -828,7 +937,7 @@ public class DBMSService {
         List<String> values = new ArrayList<>();
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
-            MongoCollection<Document> collection = mongoDatabase.getCollection("numele_colecției");
+            MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
             Document query = new Document("_id", key);
             for (Document document : collection.find(query)) {
                 values.add((String) document.get("values"));
