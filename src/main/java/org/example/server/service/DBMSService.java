@@ -135,7 +135,6 @@ public class DBMSService {
         int j = 0;
         List<String> othersList = new ArrayList<>();
         for (int i = 1; i < columns.size(); i++) {
-            System.out.println(i);
             String column = columns.get(i);
 
             if (updateColumns.contains(column)) {
@@ -175,21 +174,99 @@ public class DBMSService {
 
         List<String> attributes = tableElement.getChild("Structure").getChildren("Attribute").stream().map(line -> line.getAttributeValue("attributeName")).toList();
         List<Element> primaryKeyElements = tableElement.getChild("primaryKey").getChildren("pkAttribute");
+        String primaryKeyIndexName = dbmsRepository.getCurrentDatabase() + tableName + "Ind" + String.join("", primaryKeyElements.stream().map(el -> el.getContent().get(0).getValue()).toList());
 
         validateColumns(insertColumns, attributes);
         List<String> keyValueList = computeInsertKeyValue(attributes, primaryKeyElements, values);
-        insertInMongoDb(tableName, keyValueList.get(0), keyValueList.get(1));
+
+        Element indexFiles = tableElement.getChild("IndexFiles");
+        Map<String, String> attributeValueMap = computeAttributeValueMap(insertColumns, values);
+        processIndexFiles(indexFiles, attributeValueMap, keyValueList.get(0), primaryKeyIndexName);
+        insertInMongoDb(dbmsRepository.getCurrentDatabase() + tableName, keyValueList.get(0), keyValueList.get(1));
     }
 
-    private static void insertInMongoDb(String tableName, String key, String values) throws Exception {
+    private static void processIndexFiles(Element indexFiles, Map<String, String> attributeValueMap, String primaryKey, String primaryKeyIndexName) throws Exception {
+        for (Element indexFile : indexFiles.getChildren("IndexFile")) {
+            String indexName = indexFile.getAttributeValue("indexName").split("\\.")[0];
+            if (Objects.equals(indexName, primaryKeyIndexName))
+                continue;
+
+            String isUnique = indexFile.getAttributeValue("isUnique");
+            List<String> indexColumns = indexFile.getChild("IndexAttributes").getChildren("IAttribute").stream().map(el -> el.getContent().get(0).getValue()).toList();
+            String indexSearchKey = indexColumns.stream().map(column -> attributeValueMap.get(column)).collect(Collectors.joining("$"));
+            validateUniqueKeyConstraints(indexName, indexSearchKey);
+            List<String> keyValues = new ArrayList<>();
+            indexColumns.forEach(el -> {
+                keyValues.add(attributeValueMap.get(el));
+            });
+            if (Objects.equals(isUnique, "1"))
+                insertInMongoDb(indexName, String.join("$", keyValues), primaryKey);
+            if (Objects.equals(isUnique, "0"))
+                updateIndexInMongoDb(indexName, String.join("$", keyValues), primaryKey);
+
+        }
+    }
+
+    private static void insertInMongoDb(String collectionName, String key, String values) throws Exception {
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
-            MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
 
             Document document = new Document("_id", key).append("values", values);
             collection.insertOne(document);
         } catch (Exception e) {
             throw new Exception("Primary key constraint violated!");
+        }
+    }
+
+    private static Map<String, String> computeAttributeValueMap(List<Column> attributes, List<Expression> values) {
+        Map<String, String> attributeValueMap = new LinkedHashMap<>();
+        for (int i = 0; i < attributes.size(); i++) {
+            Column attribute = attributes.get(i);
+            Expression value = values.get(i);
+
+            attributeValueMap.put(attribute.getColumnName(), value.toString());
+        }
+        return attributeValueMap;
+    }
+
+    private static void validateUniqueKeyConstraints(String indexName, String indexSearchKey) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(indexName);
+
+            Document filter = new Document("_id", indexSearchKey);
+            Document oldDocument = collection.find(filter).first();
+            if (oldDocument != null)
+                throw new Exception("Unique Key Constraint Violation");
+
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
+        }
+    }
+
+    private static void updateIndexInMongoDb(String indexName, String key, String values) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(indexName);
+
+            Document filter = new Document("_id", key); // Caută înregistrarea după cheia primară
+            Document oldDocument = collection.find(filter).first();
+
+            if (oldDocument != null && oldDocument.containsKey("values")) {
+                String oldValue = oldDocument.getString("values");
+                String updatedValue = oldValue + "#" + values; // Concatenează valoarea existentă cu noua valoare
+
+                // Actualizează câmpul "values" cu valoarea actualizată
+                Document updateDoc = new Document("$set", new Document("values", updatedValue));
+                collection.updateOne(filter, updateDoc);
+            } else {
+                Document document = new Document("_id", key).append("values", values);
+                collection.insertOne(document);
+            }
+
+        } catch (Exception e) {
+            throw new Exception("A apărut o eroare la actualizarea înregistrării.");
         }
     }
 
@@ -381,62 +458,55 @@ public class DBMSService {
             throw new Exception("No database in use!");
         try {
 
-            String indexName = index.getIndex().getName();
             String tableName = index.getTable().getName();
-            List<String> columnsNames = index.getIndex().getColumnsNames();
-            String isUnique = index.getIndex().getType() != null ? "1" : "0";
-            Element rootDataBases = dbmsRepository.getDoc().getRootElement();
-            Element dataBase = rootDataBases.getChild("DataBase");
-            for (Element element : rootDataBases.getChildren("DataBase")) {
-                if (Objects.equals(element.getAttributeValue("dataBaseName"), dbmsRepository.getCurrentDatabase())) {
-                    dataBase = element;
-                    break;
-                }
-            }
+            String indexName = dbmsRepository.getCurrentDatabase() + tableName + "Ind" + index.getIndex().getName();
 
-            Element tableElement = null;
+            Element tableElement = validateTableName(tableName);
+            Element indexFilesElement = validateIndexFiles(tableElement, indexName);
+            Element indexFileElement = createIndexFileElement(index, tableElement);
 
-            for (Element element : dataBase.getChildren("Table")) {
-                if (Objects.equals(element.getAttributeValue("tableName"), tableName.toString())) {
-                    tableElement = element;
-                }
-            }
-
-            if (tableElement == null) {
-                throw new Exception("Table not found!");
-            }
-
-            Element indexFilesElement = tableElement.getChild("IndexFiles");
-            if (indexFilesElement == null) {
-                indexFilesElement = new Element("IndexFiles");
-            }
-            if (indexFilesElement.getChildren("IndexFile").stream().anyMatch(column -> column.getAttributeValue("indexName").equals(indexName)))
-                throw new Exception("An Index with same name already exist!");
-            Element indexFileElement = new Element("IndexFile");
-            indexFileElement.setAttribute("indexName", indexName);
-
-            indexFileElement.setAttribute("isUnique", isUnique);
-            indexFileElement.setAttribute("indexType", "BTree");
-
-
-            Element indexAttributesElement = new Element("IndexAttributes");
-            for (String columnName : columnsNames) {
-                if (!tableElement.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(columnName))) {
-                    throw new Exception("Column " + columnName + " not found!");
-                }
-
-                Element iAttributeElement = new Element("IAttribute");
-                iAttributeElement.setText(columnName);
-                indexAttributesElement.addContent(iAttributeElement);
-            }
-
-            indexFileElement.addContent(indexAttributesElement);
             indexFilesElement.addContent(indexFileElement);
 
             dbmsRepository.saveToFile();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static Element createIndexFileElement(CreateIndex index, Element tableElement) throws Exception {
+        String indexName = dbmsRepository.getCurrentDatabase() + index.getTable().getName() + "Ind" + index.getIndex().getName();
+        List<String> columnsNames = index.getIndex().getColumnsNames();
+        String isUnique = index.getIndex().getType() != null ? "1" : "0";
+        Element indexFileElement = new Element("IndexFile");
+        indexFileElement.setAttribute("indexName", indexName);
+
+        indexFileElement.setAttribute("isUnique", isUnique);
+        indexFileElement.setAttribute("indexType", "BTree");
+
+
+        Element indexAttributesElement = new Element("IndexAttributes");
+        for (String columnName : columnsNames) {
+            if (!tableElement.getChild("Structure").getChildren("Attribute").stream().anyMatch(column -> column.getAttributeValue("attributeName").equalsIgnoreCase(columnName))) {
+                throw new Exception("Column " + columnName + " not found!");
+            }
+
+            Element iAttributeElement = new Element("IAttribute");
+            iAttributeElement.setText(columnName);
+            indexAttributesElement.addContent(iAttributeElement);
+        }
+
+        indexFileElement.addContent(indexAttributesElement);
+        return indexFileElement;
+    }
+
+    private static Element validateIndexFiles(Element tableElement, String indexName) throws Exception {
+        Element indexFilesElement = tableElement.getChild("IndexFiles");
+        if (indexFilesElement == null) {
+            indexFilesElement = new Element("IndexFiles");
+        }
+        if (indexFilesElement.getChildren("IndexFile").stream().anyMatch(column -> column.getAttributeValue("indexName").equals(indexName)))
+            throw new Exception("An Index with same name already exist!");
+        return indexFilesElement;
     }
 
     public static void useDataBase(String databaseName) throws Exception {
@@ -584,8 +654,7 @@ public class DBMSService {
 
                     if (index.getType().equals("PRIMARY KEY")) {
                         Element indexFileElement = new Element("IndexFile");
-                        System.out.println(index);
-                        indexFileElement.setAttribute("indexName", index.getColumnsNames().get(0) + ".ind");
+                        indexFileElement.setAttribute("indexName", dbmsRepository.getCurrentDatabase() + tableName + "Ind" + String.join("", index.getColumnsNames()));
                         indexFileElement.setAttribute("keyLength", "64");
                         indexFileElement.setAttribute("isUnique", "1");
                         indexFileElement.setAttribute("indexType", "BTree");
@@ -609,7 +678,7 @@ public class DBMSService {
                         //pentru index
                         // Adăugați elementul IndexFiles pentru index
                         Element indexFileElement = new Element("IndexFile");
-                        indexFileElement.setAttribute("indexName", index.getColumnsNames().get(0) + ".ind");
+                        indexFileElement.setAttribute("indexName", dbmsRepository.getCurrentDatabase() + tableName + "Ind" + String.join("", index.getColumnsNames()));
                         indexFileElement.setAttribute("keyLength", "30");
                         indexFileElement.setAttribute("isUnique", "1");
                         indexFileElement.setAttribute("indexType", "BTree");
