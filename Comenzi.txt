@@ -20,6 +20,9 @@ INSERT INTO Users (UserId, Password, FirstName, LastName) VALUES (1, password, J
 INSERT INTO Persons (PersonID, FirstName, LastName) VALUES (1, John, Doe);
 INSERT INTO Persons VALUES (2, Silviu, Stoian);
 
+DELETE FROM Persons WHERE PersonID=1;
+DELETE FROM Users WHERE UserId=1 AND Password=password;
+
 DELETE FROM Persons WHERE PersonID = 1;
 DELETE FROM Person WHERE PersonID = 1;
 DELETE FROM Persons WHERE PersonName = 1;

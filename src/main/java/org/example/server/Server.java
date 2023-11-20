@@ -37,9 +37,11 @@ public class Server {
                         dbmsService.executeCommand(message);
                         out.println("Server: Operatie executata cu succes");
                     } catch (JSQLParserException e) {
+                        e.printStackTrace();
                         System.out.println(e);
                         out.println("Server: Eroare parsare comanda");
                     } catch (Exception e) {
+                        e.printStackTrace();
                         out.println("Server: " + e.getMessage());
 
                     }

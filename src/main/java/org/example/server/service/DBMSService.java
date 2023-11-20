@@ -1,6 +1,5 @@
 package org.example.server.service;
 
-import com.mongodb.*;
 import com.mongodb.client.*;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.result.DeleteResult;
@@ -21,7 +20,8 @@ import net.sf.jsqlparser.statement.insert.Insert;
 import net.sf.jsqlparser.statement.update.Update;
 import org.bson.Document;
 import org.bson.conversions.Bson;
-import org.example.entity.Attribute;
+import org.example.server.entity.Attribute;
+import org.example.server.entity.ForeignKey;
 import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
 
@@ -31,7 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static org.example.connectionManager.DbConnectionManager.getMongoClient;
+import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
 
 public class DBMSService {
     private static DBMSRepository dbmsRepository;
@@ -80,8 +80,7 @@ public class DBMSService {
         if (statement instanceof Insert insert) {
             insert(insert);
         } else if (statement instanceof Delete delete) {
-            deleteFromTable(delete
-            );
+            deleteFromTable(delete);
         } else if (statement instanceof CreateTable createTable) {
             createTable(createTable);
         } else if (statement instanceof Update update) {
@@ -175,10 +174,32 @@ public class DBMSService {
 
         List<String> attributes = tableElement.getChild("Structure").getChildren("Attribute").stream().map(line -> line.getAttributeValue("attributeName")).toList();
         List<Element> primaryKeyElements = tableElement.getChild("primaryKey").getChildren("pkAttribute");
+        List<ForeignKey> foreignKeys = getForeignKeyFromCatalog(tableElement);
 
         validateColumns(insertColumns, attributes);
         List<String> keyValueList = computeInsertKeyValue(attributes, primaryKeyElements, values);
         insertInMongoDb(tableName, keyValueList.get(0), keyValueList.get(1));
+    }
+
+    private static List<ForeignKey> getForeignKeyFromCatalog(Element tableElement) {
+        List<ForeignKey> foreignKeys = new ArrayList<>();
+        for (Element foreignKeyElement : tableElement.getChildren("foreignKey")) {
+            foreignKeys.add(getForeignKeyFromElement(foreignKeyElement));
+        }
+
+        return foreignKeys;
+    }
+
+    private static ForeignKey getForeignKeyFromElement(Element foreignKeyElement) {
+        List<String> attributes = foreignKeyElement.getChildren("fkAttribute").stream()
+                .map(Element::getText)
+                .toList();
+        Element referencesElement = foreignKeyElement.getChild("references");
+        String refTable = referencesElement.getChild("refTable").getText();
+        List<String> refAttributes = referencesElement.getChildren("refAttribute").stream()
+                .map(Element::getText)
+                .toList();
+        return new ForeignKey(refTable, attributes, refAttributes);
     }
 
     private static void insertInMongoDb(String tableName, String key, String values) throws Exception {
@@ -546,6 +567,12 @@ public class DBMSService {
             rootElement.setAttribute("fileName", fileName);
             //rootElement.setAttribute("rowLength", String.valueOf(rowLength));
 
+            Element primaryKeyElement = new Element("primaryKey");
+            Element uniqueKeysElement = new Element("uniqueKeys");
+
+            Element indexFilesElement = new Element("IndexFiles");
+            Element foreignKeysElement = rootElement.getChild("foreignKeys");
+
             // Crearea elementului "<Structure>"
             Element structureElement = new Element("Structure");
             for (ColumnDefinition column : createTable.getColumnDefinitions()) {
@@ -564,15 +591,32 @@ public class DBMSService {
                 attributeElement.setAttribute("length", String.valueOf(length));
                 attributeElement.setAttribute("isnull", String.valueOf(isNull));
                 structureElement.addContent(attributeElement);
+
+                if (column.getColumnSpecs() != null && column.getColumnSpecs().get(0).equalsIgnoreCase("UNIQUE")) {
+                    Element indexFileElement = new Element("IndexFile");
+                    indexFileElement.setAttribute("indexName", attributeName + ".ind");
+                    indexFileElement.setAttribute("keyLength", "30");
+                    indexFileElement.setAttribute("isUnique", "1");
+                    indexFileElement.setAttribute("indexType", "BTree");
+
+
+                    Element indexAttributesElement = new Element("IndexAttributes");
+
+                    Element uniqueAttributeElement = new Element("UniqueAttribute");
+                    uniqueAttributeElement.addContent(attributeName);
+                    uniqueKeysElement.addContent(uniqueAttributeElement);
+
+                    Element iAttributeElement = new Element("IAttribute");
+                    iAttributeElement.setText(attributeName);
+                    indexAttributesElement.addContent(iAttributeElement);
+
+                    indexFileElement.addContent(indexAttributesElement);
+                    indexFilesElement.addContent(indexFileElement);
+                    String collectionName = dbmsRepository.getCurrentDatabase() + "Unique" + tableName + attributeName;
+                    createCollection(collectionName);
+                }
             }
 
-            // Crearea elementului "<primaryKey>"
-            Element primaryKeyElement = new Element("primaryKey");
-            Element uniqueKeysElement = new Element("uniqueKeys");
-
-            Element indexFilesElement = new Element("IndexFiles");
-            // Creați elementul XML pentru constrângerea de cheie străină
-            Element foreignKeysElement = rootElement.getChild("foreignKeys");
             if (foreignKeysElement == null) {
                 foreignKeysElement = new Element("foreignKeys");
             }
@@ -606,8 +650,6 @@ public class DBMSService {
 
                     }
                     if (index.getType().equals("UNIQUE")) {
-                        //pentru index
-                        // Adăugați elementul IndexFiles pentru index
                         Element indexFileElement = new Element("IndexFile");
                         indexFileElement.setAttribute("indexName", index.getColumnsNames().get(0) + ".ind");
                         indexFileElement.setAttribute("keyLength", "30");
@@ -629,8 +671,8 @@ public class DBMSService {
                         }
                         indexFileElement.addContent(indexAttributesElement);
                         indexFilesElement.addContent(indexFileElement);
-
-
+                        String collectionName = dbmsRepository.getCurrentDatabase() + "Unique" + tableName + String.join("", index.getColumnsNames());
+                        createCollection(collectionName);
                     }
 
 
@@ -677,6 +719,8 @@ public class DBMSService {
                                 foreignKeyElement.addContent(fkAttributeElement);
                             }
                         }
+                        String collectionName = dbmsRepository.getCurrentDatabase() + "ForeignKey7" + tableName + String.join("", index.getColumnsNames());
+                        createCollection(collectionName);
                     }
                 }
             }
@@ -697,4 +741,33 @@ public class DBMSService {
             e.printStackTrace();
         }
     }
+
+    private static void createCollection(String collectionName) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            if (!mongoDatabase.listCollectionNames().into(new ArrayList<>()).contains(collectionName)) {
+                mongoDatabase.createCollection(collectionName);
+            } else {
+                throw new Exception("Collection already exists");
+            }
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
+        }
+    }
+
+    private static List<String> getValuesForKey(String collectionName, String key) throws Exception {
+        List<String> values = new ArrayList<>();
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection("numele_colecției");
+            Document query = new Document("_id", key);
+            for (Document document : collection.find(query)) {
+                values.add((String) document.get("values"));
+            }
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
+        }
+        return values;
+    }
+
 }

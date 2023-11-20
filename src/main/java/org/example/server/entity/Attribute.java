@@ -1,4 +1,4 @@
-package org.example.entity;
+package org.example.server.entity;
 
 public class Attribute {
     private String attributeName;
