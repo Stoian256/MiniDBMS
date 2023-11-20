@@ -55,6 +55,15 @@ public class DBMSRepository {
     }
 
     public Document getDoc() {
+        File xmlFile = new File(catalogPath);
+        if (xmlFile.exists()) {
+            SAXBuilder saxBuilder = new SAXBuilder();
+            try {
+                doc = saxBuilder.build(xmlFile);
+            } catch (JDOMException | IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
         return doc;
     }
 
