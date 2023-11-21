@@ -195,7 +195,9 @@ public class DBMSService {
             String isUnique = indexFile.getAttributeValue("isUnique");
             List<String> indexColumns = indexFile.getChild("IndexAttributes").getChildren("IAttribute").stream().map(el -> el.getContent().get(0).getValue()).toList();
             String indexSearchKey = indexColumns.stream().map(column -> attributeValueMap.get(column)).collect(Collectors.joining("$"));
-            validateUniqueKeyConstraints(indexName, indexSearchKey);
+            if (isUnique.equals("1")) {
+                validateUniqueKeyConstraints(indexName, indexSearchKey);
+            }
             List<String> keyValues = new ArrayList<>();
             indexColumns.forEach(el -> {
                 keyValues.add(attributeValueMap.get(el));
@@ -218,7 +220,7 @@ public class DBMSService {
     private static void saveForeignKey(ForeignKey foreignKey, Map<String, String> attributeValueMap, String tableName, String primaryKey) throws Exception {
         String collectionName = dbmsRepository.getCurrentDatabase() + tableName + "FkInd" + String.join("", String.join("", foreignKey.getAttributes()) + "Ref" + foreignKey.getRefTableName());
         List<String> foreignKeyValue = getForeignKeyValue(foreignKey, attributeValueMap);
-        updateIndexInMongoDb(collectionName, String.join("#", foreignKeyValue), primaryKey);
+        updateIndexInMongoDb(collectionName, String.join("$", foreignKeyValue), primaryKey);
     }
 
     private static void validateForeignKeys(List<ForeignKey> foreignKeys, Map<String, String> attributeValueMap) throws Exception {
@@ -235,7 +237,7 @@ public class DBMSService {
     }
 
     private static void validateForeignKey(String refTable, List<String> foreignKeyValue) throws Exception {
-        String collectionName =dbmsRepository.getCurrentDatabase() + refTable;
+        String collectionName = dbmsRepository.getCurrentDatabase() + refTable;
         List<String> primaryKeyFromRefTable = getValuesForKey(collectionName, String.join("#", foreignKeyValue));
         if (primaryKeyFromRefTable.isEmpty()) {
             throw new Exception("Foreign key constraint violated!");
