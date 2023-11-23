@@ -374,7 +374,7 @@ public class DBMSService {
         Map<String, String> primaryKeys = extractAttributeValues(delete.getWhere());
         validatePrimaryKey(tableElement, primaryKeys);
         Map<String, List<ForeignKey>> foreignKeys = getForeignKeyFromCatalogByRefTable(tableElement.getParentElement(), tableName);
-        validateForeignKeyForDelete(foreignKeys, primaryKeys.keySet(), String.join("#", primaryKeys.values()));
+        validateForeignKeyForDelete(foreignKeys, primaryKeys.keySet(), String.join("$", primaryKeys.values()));
         deleteFromMongoDb(tableName, primaryKeys);
     }
 
