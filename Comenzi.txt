@@ -7,12 +7,14 @@ CREATE TABLE IF NOT EXISTS Companies (id int, name varchar(50), address varchar(
 CREATE TABLE CUSTOMERS(ID INT NOT NULL, NAME VARCHAR (20) NOT NULL, AGE INT NOT NULL, ADDRESS CHAR (25), SALARY DECIMAL (18, 2), PRIMARY KEY (ID));
 CREATE TABLE Persons ( PersonID int NOT NULL, FirstName varchar(50), LastName varchar(50), PRIMARY KEY (PersonID));
 CREATE TABLE Orders ( OrderID int NOT NULL, OrderNumber int NOT NULL, PersonID int, PRIMARY KEY (OrderID), FOREIGN KEY (PersonID) REFERENCES Persons(ID));
+INSERT INTO Orders (OrderID, OrderNumber, PersonID) values (1,1,1)
 CREATE TABLE Orders ( OrderID int NOT NULL, OrderNumber int NOT NULL, PersonID int, PRIMARY KEY (OrderID), FOREIGN KEY (PersonID) REFERENCES Persons(PersonID));
 CREATE INDEX IX_User_Name ON Users (Name, Age);
 CREATE UNIQUE INDEX IX_User_Name ON Users (Name, Age);
 CREATE UNIQUE INDEX IX_User_Name ON Specialization (Name, Age);
 CREATE UNIQUE INDEX IX_User_Name ON Specialization (SpecName, Language);
-CREATE INDEX FirstNameLastName ON Persons (FirstName, LastName);
+CREATE UNIQUE INDEX FirstNameLastName ON Persons (FirstName, LastName);
+CREATE INDEX FirstNamevON Persons (FirstName);
 CREATE TABLE Users ( UserId int NOT NULL, Password varchar(50), FirstName varchar(50), LastName varchar(50), PRIMARY KEY (UserId,Password));
 
 INSERT INTO Users (UserId, Password, FirstName, LastName) VALUES (1, password, John, Doe);

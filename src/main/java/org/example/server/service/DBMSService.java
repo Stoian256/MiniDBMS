@@ -175,12 +175,12 @@ public class DBMSService {
         List<Element> primaryKeyElements = tableElement.getChild("primaryKey").getChildren("pkAttribute");
         List<ForeignKey> foreignKeys = getForeignKeyFromCatalog(tableElement);
         String primaryKeyIndexName = dbmsRepository.getCurrentDatabase() + tableName + "PkInd" + String.join("", primaryKeyElements.stream().map(el -> el.getContent().get(0).getValue()).toList());
-
         validateColumns(insertColumns, attributes);
         List<String> keyValueList = computeInsertKeyValue(attributes, primaryKeyElements, values);
 
         Element indexFiles = tableElement.getChild("IndexFiles");
         Map<String, String> attributeValueMap = computeAttributeValueMap(insertColumns, values);
+        validatePrimaryKeyConstraint(dbmsRepository.getCurrentDatabase() + tableName,keyValueList.get(0));
         processIndexFiles(indexFiles, attributeValueMap, keyValueList.get(0), primaryKeyIndexName);
         saveForeignKeys(foreignKeys, attributeValueMap, tableName, keyValueList.get(0));
         insertInMongoDb(dbmsRepository.getCurrentDatabase() + tableName, keyValueList.get(0), keyValueList.get(1));
@@ -198,6 +198,16 @@ public class DBMSService {
             if (isUnique.equals("1")) {
                 validateUniqueKeyConstraints(indexName, indexSearchKey);
             }
+        }
+
+        for (Element indexFile : indexFiles.getChildren("IndexFile")) {
+            String indexName = indexFile.getAttributeValue("indexName").split("\\.")[0];
+            if (Objects.equals(indexName, primaryKeyIndexName) || indexName.contains("FkInd"))
+                continue;
+
+            String isUnique = indexFile.getAttributeValue("isUnique");
+            List<String> indexColumns = indexFile.getChild("IndexAttributes").getChildren("IAttribute").stream().map(el -> el.getContent().get(0).getValue()).toList();
+
             List<String> keyValues = new ArrayList<>();
             indexColumns.forEach(el -> {
                 keyValues.add(attributeValueMap.get(el));
@@ -298,6 +308,20 @@ public class DBMSService {
             if (oldDocument != null)
                 throw new Exception("Unique Key Constraint Violation");
 
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
+        }
+    }
+
+    private static void validatePrimaryKeyConstraint(String tableName, String primaryKey) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(tableName);
+
+            Document filter = new Document("_id", primaryKey);
+            Document oldDocument = collection.find(filter).first();
+            if (oldDocument != null)
+                throw new Exception("Primary Key Constraint Violation");
         } catch (Exception e) {
             throw new Exception(e.getMessage());
         }
