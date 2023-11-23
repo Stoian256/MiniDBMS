@@ -1,29 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Databases>
   <DataBase dataBaseName="MyDB">
-    <Table tableName="Users" fileName="Users.csv">
-      <Structure>
-        <Attribute attributeName="UserId" type="int" length="64" isnull="0" />
-        <Attribute attributeName="Password" type="varchar" length="50" isnull="1" />
-        <Attribute attributeName="FirstName" type="varchar" length="50" isnull="1" />
-        <Attribute attributeName="LastName" type="varchar" length="50" isnull="1" />
-      </Structure>
-      <primaryKey>
-        <pkAttribute>UserId</pkAttribute>
-        <pkAttribute>Password</pkAttribute>
-      </primaryKey>
-      <foreignKeys />
-      <uniqueKeys />
-      <IndexFiles>
-        <IndexFile indexName="MyDBUsersIndUserIdPassword" keyLength="64" isUnique="1" indexType="BTree">
-          <IndexAttributes>
-            <IAttribute>UserId</IAttribute>
-            <IAttribute>Password</IAttribute>
-          </IndexAttributes>
-        </IndexFile>
-      </IndexFiles>
-    </Table>
-    <Table tableName="Persons" fileName="Persons.csv">
+    <Table tableName="Persons" fileName="MyDBPersons">
       <Structure>
         <Attribute attributeName="PersonID" type="int" length="64" isnull="0" />
         <Attribute attributeName="FirstName" type="varchar" length="50" isnull="1" />
@@ -33,18 +11,54 @@
         <pkAttribute>PersonID</pkAttribute>
       </primaryKey>
       <foreignKeys />
-      <uniqueKeys>
-        <UniqueAttribute>FirstName</UniqueAttribute>
-      </uniqueKeys>
+      <uniqueKeys />
       <IndexFiles>
-        <IndexFile indexName="MyDBPersonsIndPersonID" keyLength="64" isUnique="1" indexType="BTree">
+        <IndexFile indexName="MyDBPersonsPkIndPersonID" keyLength="64" isUnique="1" indexType="BTree">
           <IndexAttributes>
             <IAttribute>PersonID</IAttribute>
           </IndexAttributes>
         </IndexFile>
-        <IndexFile indexName="MyDBPersonsIndFirstName" keyLength="30" isUnique="1" indexType="BTree">
+        <IndexFile indexName="MyDBPersonsIndFirstName" isUnique="0" indexType="BTree">
           <IndexAttributes>
             <IAttribute>FirstName</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+        <IndexFile indexName="MyDBPersonsIndFirstNameLastName" isUnique="1" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>FirstName</IAttribute>
+            <IAttribute>LastName</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
+    <Table tableName="Orders" fileName="MyDBOrders">
+      <Structure>
+        <Attribute attributeName="OrderID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="OrderNumber" type="int" length="64" isnull="0" />
+        <Attribute attributeName="PersonID" type="int" length="64" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>OrderID</pkAttribute>
+      </primaryKey>
+      <foreignKeys>
+        <foreignKey>
+          <fkAttribute>PersonID</fkAttribute>
+          <references>
+            <refTable>Persons</refTable>
+            <refAttribute>PersonID</refAttribute>
+          </references>
+        </foreignKey>
+      </foreignKeys>
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile indexName="MyDBOrdersPkIndOrderID" keyLength="64" isUnique="1" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>OrderID</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+        <IndexFile keyLength="64" isUnique="0" indexType="BTree" indexName="MyDBOrdersFkIndPersonIDRefPersons">
+          <IndexAttributes>
+            <IAttribute>PersonID</IAttribute>
           </IndexAttributes>
         </IndexFile>
       </IndexFiles>
