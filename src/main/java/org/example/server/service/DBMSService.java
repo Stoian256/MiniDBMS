@@ -22,6 +22,7 @@ import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.example.server.entity.Attribute;
 import org.example.server.entity.ForeignKey;
+import org.example.server.entity.IndexFile;
 import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
 
@@ -337,7 +338,7 @@ public class DBMSService {
 
             if (oldDocument != null && oldDocument.containsKey("values")) {
                 String oldValue = oldDocument.getString("values");
-                String updatedValue = oldValue + "#" + values; // Concatenează valoarea existentă cu noua valoare
+                String updatedValue = oldValue + "$" + values; // Concatenează valoarea existentă cu noua valoare
 
                 // Actualizează câmpul "values" cu valoarea actualizată
                 Document updateDoc = new Document("$set", new Document("values", updatedValue));
@@ -399,7 +400,47 @@ public class DBMSService {
         validatePrimaryKey(tableElement, primaryKeys);
         Map<String, List<ForeignKey>> foreignKeys = getForeignKeyFromCatalogByRefTable(tableElement.getParentElement(), tableName);
         validateForeignKeyForDelete(foreignKeys, primaryKeys.keySet(), String.join("$", primaryKeys.values()));
-        deleteFromMongoDb(tableName, primaryKeys);
+        List<IndexFile> indexFiles = getIndexFilesForTable(tableElement);
+        updateIndexesAfterDelete(primaryKeys, indexFiles);
+        deleteFromMongoDb(tableName, String.join("#", primaryKeys.values()));
+    }
+
+    private static List<IndexFile> getIndexFilesForTable(Element tableElement) {
+        return tableElement.getChild("IndexFiles").getChildren("IndexFile").stream()
+                .map(DBMSService::getIndexFromElement)
+                .toList();
+    }
+
+    private static IndexFile getIndexFromElement(Element indexElement) {
+        String indexName = indexElement.getAttributeValue("indexName");
+        List<String> attributes = indexElement.getChild("IndexAttributes").getChildren("IAttribute").stream()
+                .map(Element::getText)
+                .toList();
+        return new IndexFile(indexName, attributes);
+    }
+
+    private static void updateIndexesAfterDelete(Map<String, String> primaryKey, List<IndexFile> indexFiles) throws Exception {
+        for (IndexFile indexFile : indexFiles) {
+            deleteValueFromIndexInMongoDB(indexFile.getIndexFileName(), String.join("#", primaryKey.values()));
+        }
+    }
+
+    private static String getRegexForIndex(Map<String, String> primaryKey, List<String> primaryKeysFromIndexAttributes) {
+        StringBuilder regex = new StringBuilder();
+        for (Map.Entry<String,String> entry : primaryKey.entrySet()) {
+            if (primaryKeysFromIndexAttributes.contains(entry.getKey())) {
+                regex.append(entry.getValue()).append("\\$*");
+            } else {
+                regex.append(".+\\$*");
+            }
+        }
+        return String.valueOf(regex);
+    }
+
+    private static List<String> getPrimaryKeysFromIndexAttributes(Set<String> primaryKey, List<String> indexAttributes) {
+        return primaryKey.stream()
+                .filter(indexAttributes::contains)
+                .toList();
     }
 
     private static Element validateTableName(String tableName) throws Exception {
@@ -563,11 +604,10 @@ public class DBMSService {
         return new Attribute(attributeName, type, length, isNull);
     }
 
-    private static void deleteFromMongoDb(String tableName, Map<String, String> primaryKeys) throws Exception {
+    private static void deleteFromMongoDb(String tableName, String concatenatedKey) throws Exception {
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
             MongoCollection<Document> collection = mongoDatabase.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
-            String concatenatedKey = String.join("#", primaryKeys.values());
             Bson filter = Filters.eq("_id", concatenatedKey);
             DeleteResult result = collection.deleteOne(filter);
             if (result.getDeletedCount() < 1) {
@@ -631,7 +671,7 @@ public class DBMSService {
             indexFilesElement = new Element("IndexFiles");
         }
         if (indexFilesElement.getChildren("IndexFile").stream().anyMatch(column -> column.getAttributeValue("indexName").equals(indexName)))
-            throw new Exception("An Index with same name already exist!");
+            throw new Exception("An IndexFile with same name already exist!");
         return indexFilesElement;
     }
 
@@ -706,6 +746,7 @@ public class DBMSService {
                 if (element.getAttributeValue("tableName").equals(dropTable.getName().toString())) {
                     tableFound = true;
                     dataBase.removeContent(element);
+                    deleteCollectionsFromMongoDB(dropTable.getName().toString(), getIndexFilesForTable(element));
                 }
             }
             if (!tableFound)
@@ -714,6 +755,13 @@ public class DBMSService {
 
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private static void deleteCollectionsFromMongoDB(String tableName, List<IndexFile> indexFiles) throws Exception {
+        deleteCollectionFromMongoDB(dbmsRepository.getCurrentDatabase() + tableName);
+        for (IndexFile indexFile : indexFiles) {
+            deleteCollectionFromMongoDB(indexFile.getIndexFileName());
         }
     }
 
@@ -809,30 +857,14 @@ public class DBMSService {
             if (createTable.getIndexes() != null) {
                 for (Index index : createTable.getIndexes()) {
                     if (indexFilesElement.getChildren("IndexFile").stream().anyMatch(column -> column.getAttributeValue("indexName").equals(index.getColumnsNames().get(0) + ".ind")))
-                        throw new Exception("An Index with same name already exist!");
+                        throw new Exception("An IndexFile with same name already exist!");
 
                     if (index.getType().equals("PRIMARY KEY")) {
-                        Element indexFileElement = new Element("IndexFile");
-                        String indexName = dbmsRepository.getCurrentDatabase() + tableName + "PkInd" + String.join("", index.getColumnsNames());
-                        indexFileElement.setAttribute("indexName", indexName);
-                        indexFileElement.setAttribute("keyLength", "64");
-                        indexFileElement.setAttribute("isUnique", "1");
-                        indexFileElement.setAttribute("indexType", "BTree");
-
-
-                        Element indexAttributesElement = new Element("IndexAttributes");
                         for (String columnName : index.getColumnsNames()) {
                             Element pkAttributeElement = new Element("pkAttribute");
                             primaryKeyElement.addContent(pkAttributeElement);
                             pkAttributeElement.addContent(columnName);
-                            Element iAttributeElement = new Element("IAttribute");
-                            iAttributeElement.setText(columnName); // Aici trebuie să specificați numele atributului indexului
-
-                            indexAttributesElement.addContent(iAttributeElement);
                         }
-                        indexFileElement.addContent(indexAttributesElement);
-                        indexFilesElement.addContent(indexFileElement);
-
                     }
                     if (index.getType().equals("UNIQUE")) {
                         //pentru index
@@ -972,6 +1004,41 @@ public class DBMSService {
             throw new Exception(e.getMessage());
         }
         return values;
+    }
+
+    private static void deleteCollectionFromMongoDB(String collectionName) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            mongoDatabase.getCollection(collectionName).drop();
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
+        }
+    }
+
+    private static void deleteValueFromIndexInMongoDB(String collectionName, String value) throws Exception {
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
+
+            MongoCursor<Document> cursor = collection.find().iterator();
+            while (cursor.hasNext()) {
+                Document document = cursor.next();
+                Object values = document.get("values");
+                List<String> valuesSplit = List.of(((String) values).split("\\$"));
+                String newValue = valuesSplit.stream()
+                            .filter(val -> !val.equals(value))
+                            .collect(Collectors.joining());
+                if (newValue.equals("")) {
+                    Bson filter = Filters.eq("values", value);
+                    DeleteResult result = collection.deleteOne(filter);
+                } else {
+                    collection.updateOne(document, new Document("$set", new Document("values", newValue)));
+                }
+            }
+            cursor.close();
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
+        }
     }
 
 }
