@@ -33,3 +33,28 @@ DELETE FROM Users WHERE UserId = 1 AND Password=password;
 
 UPDATE Persons SET FirstName= AAAA WHERE PersonID = 1;
 UPDATE Persons SET LastName= BBB WHERE PersonID = 1;
+
+CREATE UNIQUE INDEX IX_User_Name ON Users (FirstName, LastName);
+INSERT INTO Users (UserId, Password, FirstName, LastName) VALUES (1, pswd, John, Doe);
+INSERT INTO Users (UserId, Password, FirstName, LastName) VALUES (2, pswd, John, Doe);
+
+CREATE TABLE Persons1 ( PersonID int NOT NULL, FirstName varchar(50), LastName varchar(50), PRIMARY KEY (PersonID, FirstName));
+CREATE TABLE Orders1 ( OrderID int NOT NULL, OrderNumber int NOT NULL, PersonID int, FirstName varchar(30), PRIMARY KEY (OrderID, FirstName), FOREIGN KEY (PersonID, FirstName) REFERENCES Persons1(PersonID, FirstName));
+
+INSERT INTO Persons1 (PersonID, FirstName, LastName) VALUES (1, John, Doe);
+INSERT INTO Persons1 (PersonID, FirstName, LastName) VALUES (2, Andrei, Suciu);
+INSERT INTO Persons1 (PersonID, FirstName, LastName) VALUES (3, Silviu, Stoian);
+
+INSERT INTO Orders1 (OrderID, OrderNumber, PersonID, FirstName) VALUES (1, 1, 2, John);
+INSERT INTO Orders1 (OrderID, OrderNumber, PersonID, FirstName) VALUES (1, 1, 1, John);
+INSERT INTO Orders1 (OrderID, OrderNumber, PersonID, FirstName) VALUES (2, 1, 2, Andrei);
+INSERT INTO Orders1 (OrderID, OrderNumber, PersonID, FirstName) VALUES (3, 1, 2, Andrei);
+
+CREATE UNIQUE INDEX IX_Firstname ON Orders1 (FirstName);
+
+DELETE FROM Persons1 WHERE PersonID = 1 AND FirstName = John;
+DELETE FROM Orders1 WHERE OrderID = 1 AND FirstName = John;
+DELETE FROM Orders1 WHERE OrderID = 3 AND FirstName = Andrei;
+
+DROP TABLE Persons1;
+DROP TABLE Orders1;
