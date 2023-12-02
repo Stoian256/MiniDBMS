@@ -5,24 +5,10 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 
 public class DbConnectionManager {
-    private static final String CONNECTION_STRING = "mongodb+srv://mini_dbms_user:znyRpmoyRBZSdUum@cluster0.7wfpod0.mongodb.net/?retryWrites=true&w=majority";
+    private static final String CONNECTION_STRING = "mongodb://localhost:27017";
 
     public static MongoClient getMongoClient() {
-        ServerApi serverApi = getServerApi();
-        MongoClientSettings settings = getMongoClientSettings(serverApi);
-        return MongoClients.create(settings);
-    }
-
-    private static ServerApi getServerApi() {
-        return ServerApi.builder()
-                .version(ServerApiVersion.V1)
-                .build();
-    }
-
-    private static MongoClientSettings getMongoClientSettings(ServerApi serverApi) {
-        return MongoClientSettings.builder()
-                .applyConnectionString(new ConnectionString(CONNECTION_STRING))
-                .serverApi(serverApi)
-                .build();
+        ConnectionString connString = new ConnectionString(CONNECTION_STRING);
+        return MongoClients.create(connString);
     }
 }
