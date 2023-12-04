@@ -21,11 +21,6 @@
             <IAttribute>Mark</IAttribute>
           </IndexAttributes>
         </IndexFile>
-        <IndexFile indexName="MyDBStudentsIndGrupID" isUnique="0" indexType="BTree">
-          <IndexAttributes>
-            <IAttribute>GrupID</IAttribute>
-          </IndexAttributes>
-        </IndexFile>
         <IndexFile indexName="MyDBStudentsIndStudID" isUnique="0" indexType="BTree">
           <IndexAttributes>
             <IAttribute>StudID</IAttribute>

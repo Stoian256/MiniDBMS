@@ -73,7 +73,7 @@ INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (6, 5, Silv
 INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (7, 1, Silviu, 0787778700, silviu1@yahoo.com, 5);
 INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (8, 10, Silviu, 0787778700, silviu@yahoo.com, 5);
 SELECT * FROM Students WHERE Mark > 7;
-SELECT * FROM Students WHERE Mark > 7 AND GrupID > 7;
+SELECT * FROM Students WHERE Mark > 7 AND GrupID > 7 AND Name LIKE '^Sil';
 SELECT * FROM Students WHERE Mark > 7 AND GrupID > 7 AND StudID < 7;
 SELECT * FROM Students WHERE Mark < 7;
 SELECT * FROM Students WHERE Mark >= 7;
@@ -83,3 +83,6 @@ SELECT * FROM Students WHERE Email LIKE '^silviu';
 SELECT * FROM Students WHERE Email LIKE '.com$';
 SELECT * FROM Students WHERE Email LIKE '.*2.*';
 SELECT * FROM Students WHERE Email LIKE 'silviu@yahoo.com';
+SELECT * FROM Students WHERE Mark = 5 AND Name LIKE '^Sil';
+SELECT * FROM Students WHERE Mark = 5 AND GrupID >= 10;
+USE MyDB;
