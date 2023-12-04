@@ -31,6 +31,11 @@
             <IAttribute>StudID</IAttribute>
           </IndexAttributes>
         </IndexFile>
+        <IndexFile indexName="MyDBStudentsIndEmail" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Email</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
       </IndexFiles>
     </Table>
   </DataBase>

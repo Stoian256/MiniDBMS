@@ -8,6 +8,7 @@ import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.expression.operators.relational.ComparisonOperator;
+import net.sf.jsqlparser.expression.operators.relational.LikeExpression;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
@@ -16,10 +17,12 @@ import org.bson.BsonTimestamp;
 import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
 import org.bson.Document;
+import org.jdom2.Parent;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.regex.Pattern;
 
 import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
 
@@ -41,7 +44,7 @@ public class SelectService {
         String tableName = plainSelect.getFromItem().toString(); // Obținem numele tabelei
         Expression where = plainSelect.getWhere(); // Obținem clauza WHERE
 
-        if (where instanceof ComparisonOperator) {
+        if (where instanceof ComparisonOperator || where instanceof LikeExpression) {
             processSingleCondition(rootDataBases, database, tableName, where);
 
         } else if (where instanceof AndExpression) {
@@ -73,26 +76,48 @@ public class SelectService {
     }
 
     private void processSingleCondition(Element rootDataBases, MongoDatabase database, String tableName, Expression where) throws Exception {
-        ComparisonOperator comparisonOperator = (ComparisonOperator) where;
-        Column column = (Column) comparisonOperator.getLeftExpression();
-        String columnName = column.getColumnName();
+        if (where instanceof ComparisonOperator) {
+            ComparisonOperator comparisonOperator = (ComparisonOperator) where;
+            Column column = (Column) comparisonOperator.getLeftExpression();
+            String columnName = column.getColumnName();
 
-        LongValue longValue = (LongValue) comparisonOperator.getRightExpression();
-        int conditionValue = (int) longValue.getValue();
+            String conditionValue =  comparisonOperator.getRightExpression().toString();
+            List<String> matchingIDs = List.of();
+            String operator = comparisonOperator.getStringExpression();
+            if (existIndexForColumn(rootDataBases, tableName, columnName)) {
+                MongoCollection<Document> indexCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName + "Ind" + columnName);
+                matchingIDs = findMatchingIDs(indexCollection, columnName, conditionValue, operator);
+            }
+            if (!matchingIDs.isEmpty()) {
+                MongoCollection<Document> studentsCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+                List<String> result = retrieveEntities(studentsCollection, matchingIDs);
+                result.forEach(System.out::println);
+            } else {
+                System.out.println("Nu au fost găsite înregistrări care să satisfacă toate condițiile.");
+            }
+        }else if( where instanceof LikeExpression){
+            LikeExpression likeExpression = (LikeExpression) where;
+            Column column = (Column) likeExpression.getLeftExpression();
+            String columnName = column.getColumnName();
+            String conditionValue =  likeExpression.getRightExpression().toString();
+            List<String> matchingIDs = List.of();
+            String operator = likeExpression.getStringExpression();
 
-        List<String> matchingIDs = List.of();
-        String operator = comparisonOperator.getStringExpression();
-        if (existIndexForColumn(rootDataBases, tableName, columnName)) {
-            MongoCollection<Document> indexCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName + "Ind" + columnName);
-            matchingIDs = findMatchingIDs(indexCollection, columnName, conditionValue, operator);
+            if (existIndexForColumn(rootDataBases, tableName, columnName)) {
+                MongoCollection<Document> indexCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName + "Ind" + columnName);
+                matchingIDs = findMatchingIDs(indexCollection, columnName, conditionValue, operator);
+            }
+            if (!matchingIDs.isEmpty()) {
+                MongoCollection<Document> studentsCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+                List<String> result = retrieveEntities(studentsCollection, matchingIDs);
+                result.forEach(System.out::println);
+            } else {
+                System.out.println("Nu au fost găsite înregistrări care să satisfacă toate condițiile.");
+            }
+
         }
-        if (!matchingIDs.isEmpty()) {
-            MongoCollection<Document> studentsCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
-            List<String> result = retrieveEntities(studentsCollection, matchingIDs);
-            result.forEach(System.out::println);
-        } else {
-            System.out.println("Nu au fost găsite înregistrări care să satisfacă toate condițiile.");
-        }
+
+
     }
 
     private void processMultipleConditions(Element rootDataBases, MongoDatabase database, String tableName, List<Expression> conditions) throws Exception {
@@ -104,8 +129,7 @@ public class SelectService {
                 Column column = (Column) comparisonOperator.getLeftExpression();
                 String columnName = column.getColumnName();
 
-                LongValue longValue = (LongValue) comparisonOperator.getRightExpression();
-                int conditionValue = (int) longValue.getValue();
+                String conditionValue =  comparisonOperator.getRightExpression().toString();
 
                 String operator = comparisonOperator.getStringExpression();
                 if (existIndexForColumn(rootDataBases, tableName, columnName)) {
@@ -152,7 +176,7 @@ public class SelectService {
     private static List<String> findMatchingIDs(
             MongoCollection<Document> indexCollection,
             String columnName,
-            Integer conditionValue,
+            String conditionValue,
             String operator
     ) {
         List<String> matchingIDs = new ArrayList<>();
@@ -160,16 +184,25 @@ public class SelectService {
 
         switch (operator) {
             case ">":
-                query.append("$expr", new Document("$gt", Arrays.asList(new Document("$toInt", "$_id"), conditionValue)));
+                query.append("$expr", new Document("$gt", Arrays.asList(new Document("$toInt", "$_id"), Integer.parseInt(conditionValue))));
                 break;
             case ">=":
-                query.append("$expr", new Document("$gte", Arrays.asList(new Document("$toInt", "$_id"), conditionValue)));
+                query.append("$expr", new Document("$gte", Arrays.asList(new Document("$toInt", "$_id"), Integer.parseInt(conditionValue))));
                 break;
             case "<":
-                query.append("$expr", new Document("$lt", Arrays.asList(new Document("$toInt", "$_id"), conditionValue)));
+                query.append("$expr", new Document("$lt", Arrays.asList(new Document("$toInt", "$_id"), Integer.parseInt(conditionValue))));
                 break;
             case "<=":
-                query.append("$expr", new Document("$lte", Arrays.asList(new Document("$toInt", "$_id"), conditionValue)));
+                query.append("$expr", new Document("$lte", Arrays.asList(new Document("$toInt", "$_id"), Integer.parseInt(conditionValue))));
+                break;
+            case "=":
+                query.append("_id", new Document("$eq", conditionValue));
+                break;
+            case "LIKE":
+                String patternForMongoDB = conditionValue
+                        .replace("'","");
+                Pattern regexPattern = Pattern.compile(patternForMongoDB);
+                query.append("_id", new Document("$regex", regexPattern));
                 break;
             default:
                 // Operatorul nu este recunoscut
