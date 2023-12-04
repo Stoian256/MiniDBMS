@@ -34,8 +34,8 @@ public class Server {
                     if (message == "")
                         return;
                     try {
-                        dbmsService.executeCommand(message);
-                        out.println("Server: Operatie executata cu succes");
+                        String commandMessage = DBMSService.executeCommand(message);
+                        out.println(commandMessage);
                     } catch (JSQLParserException e) {
                         e.printStackTrace();
                         System.out.println(e);

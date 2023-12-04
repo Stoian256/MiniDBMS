@@ -17,6 +17,7 @@ import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.update.Update;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -35,12 +36,11 @@ import java.util.stream.Collectors;
 import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
 
 public class DBMSService {
-    private static DBMSRepository dbmsRepository;
+    public static DBMSRepository dbmsRepository;
     private static final String regexCreateDatabase = "CREATE\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexDropDatabase = "DROP\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexUseDatabase = "USE\\s+([\\w_]+);";
-
-    private static final String DATABASE_NAME = "mini_dbms";
+    public static final String DATABASE_NAME = "mini_dbms";
     private static final String DATABASE_NODE = "DataBase";
     private static final String TABLE_NODE = "Table";
     private static final String TABLE_NAME_ATTRIBUTE = "tableName";
@@ -54,27 +54,27 @@ public class DBMSService {
         this.dbmsRepository = dbmsRepository;
     }
 
-    public static void executeCommand(String sqlCommand) throws Exception {
+    public static String executeCommand(String sqlCommand) throws Exception {
         Pattern pattern = Pattern.compile(regexCreateDatabase);
         Matcher matcher = pattern.matcher(sqlCommand);
         if (matcher.find()) {
             String databaseName = matcher.group(1);
             createDatabase(databaseName);
-            return;
+            return "Server: Operatie executata cu succes";
         }
         pattern = Pattern.compile(regexDropDatabase);
         matcher = pattern.matcher(sqlCommand);
         if (matcher.find()) {
             String databaseName = matcher.group(1);
             dropDataBase(databaseName);
-            return;
+            return "Server: Operatie executata cu succes";
         }
         pattern = Pattern.compile(regexUseDatabase);
         matcher = pattern.matcher(sqlCommand);
         if (matcher.find()) {
             String databaseName = matcher.group(1);
             useDataBase(databaseName);
-            return;
+            return "Server: Operatie executata cu succes";
         }
 
         Statement statement = CCJSqlParserUtil.parse(sqlCommand);
@@ -90,8 +90,11 @@ public class DBMSService {
             dropTable(dropTable);
         } else if (statement instanceof CreateIndex createIndex) {
             createIndex(createIndex);
+        } else if (statement instanceof Select select) {
+            return SelectService.selectFromTable(select);
         } else
             throw new Exception("Eroare parsare comanda");
+        return "Server: Operatie executata cu succes";
     }
 
     public static void update(Update update) throws Exception {
@@ -100,7 +103,7 @@ public class DBMSService {
 
 
         String tableName = update.getTable().getName();
-        Element tableElement = validateTableName(tableName);
+        Element tableElement = getTableByName(tableName);
 
         List<Column> updateColumns = update.getColumns();
         List<Expression> values = update.getExpressions();
@@ -166,7 +169,7 @@ public class DBMSService {
 
 
         String tableName = insert.getTable().getName();
-        Element tableElement = validateTableName(tableName);
+        Element tableElement = getTableByName(tableName);
 
         List<Column> insertColumns = insert.getColumns();
         List<Expression> values = ((ExpressionList) insert.getItemsList()).getExpressions();
@@ -395,7 +398,7 @@ public class DBMSService {
         if (dbmsRepository.getCurrentDatabase().equals(""))
             throw new Exception("No database in use!");
         String tableName = delete.getTable().getName();
-        Element tableElement = validateTableName(tableName);
+        Element tableElement = getTableByName(tableName);
         Map<String, String> primaryKeys = extractAttributeValues(delete.getWhere());
         validatePrimaryKey(tableElement, primaryKeys);
         Map<String, List<ForeignKey>> foreignKeys = getForeignKeyFromCatalogByRefTable(tableElement.getParentElement(), tableName);
@@ -405,7 +408,7 @@ public class DBMSService {
         deleteFromMongoDb(tableName, String.join("#", primaryKeys.values()));
     }
 
-    private static List<IndexFile> getIndexFilesForTable(Element tableElement) {
+    public static List<IndexFile> getIndexFilesForTable(Element tableElement) {
         return tableElement.getChild("IndexFiles").getChildren("IndexFile").stream()
                 .map(DBMSService::getIndexFromElement)
                 .toList();
@@ -443,7 +446,7 @@ public class DBMSService {
                 .toList();
     }
 
-    private static Element validateTableName(String tableName) throws Exception {
+    public static Element getTableByName(String tableName) throws Exception {
         Element rootDataBases = dbmsRepository.getDoc().getRootElement();
 
         Optional<Element> databaseElement = getDatabaseElement(rootDataBases);
@@ -627,7 +630,7 @@ public class DBMSService {
             String tableName = index.getTable().getName();
             String indexName = dbmsRepository.getCurrentDatabase() + tableName + "Ind" + index.getIndex().getName();
 
-            Element tableElement = validateTableName(tableName);
+            Element tableElement = getTableByName(tableName);
             Element indexFilesElement = validateIndexFiles(tableElement, indexName);
             Element indexFileElement = createIndexFileElement(index, tableElement);
 
