@@ -8,7 +8,7 @@
         <Attribute attributeName="Name" type="varchar" length="50" isnull="1" />
         <Attribute attributeName="Tel" type="varchar" length="50" isnull="1" />
         <Attribute attributeName="Email" type="varchar" length="50" isnull="1" />
-        <Attribute attributeName="Mark" type="INT" length="64" isnull="1" />
+        <Attribute attributeName="Mark" type="int" length="64" isnull="1" />
       </Structure>
       <primaryKey>
         <pkAttribute>StudID</pkAttribute>
@@ -19,6 +19,16 @@
         <IndexFile indexName="MyDBStudentsIndMark" isUnique="0" indexType="BTree">
           <IndexAttributes>
             <IAttribute>Mark</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+        <IndexFile indexName="MyDBStudentsIndGrupID" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>GrupID</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+        <IndexFile indexName="MyDBStudentsIndStudID" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>StudID</IAttribute>
           </IndexAttributes>
         </IndexFile>
       </IndexFiles>

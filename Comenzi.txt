@@ -58,7 +58,22 @@ DELETE FROM Orders1 WHERE OrderID = 3 AND FirstName = Andrei;
 
 DROP TABLE Persons1;
 DROP TABLE Orders1;
+
+CREATE TABLE Students ( StudID int NOT NULL, GrupID int NOT NULL , Name varchar(50), Tel varchar(50), Email varchar(50), Mark int, PRIMARY KEY (StudID));
+CREATE INDEX Mark ON Students (Mark);
+CREATE INDEX GrupID ON Students (GrupID);
+CREATE INDEX StudID ON Students (StudID);
+INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (1, 5, Silviu, 0787778700, silviu@yahoo.com, 5);
+INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (2, 6, Silviu, 0787778700, silviu@yahoo.com, 6);
+INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (3, 10, Silviu, 0787778700, silviu@yahoo.com, 7);
+INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (4, 8, Silviu, 0787778700, silviu@yahoo.com, 8);
+INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (5, 9, Silviu, 0787778700, silviu@yahoo.com, 9);
+INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (6, 5, Silviu, 0787778700, silviu@yahoo.com, 10);
+INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (7, 1, Silviu, 0787778700, silviu@yahoo.com, 5);
+INSERT INTO Students (StudID, GrupID, Name, Tel, Email, Mark) VALUES (8, 10, Silviu, 0787778700, silviu@yahoo.com, 5);
 SELECT * FROM Students WHERE Mark > 7;
+SELECT * FROM Students WHERE Mark > 7 AND GrupID > 7;
+SELECT * FROM Students WHERE Mark > 7 AND GrupID > 7 AND StudID < 7;
 SELECT * FROM Students WHERE Mark < 7;
 SELECT * FROM Students WHERE Mark >= 7;
 SELECT * FROM Students WHERE Mark <= 7;
