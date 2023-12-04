@@ -17,6 +17,7 @@ import net.sf.jsqlparser.statement.create.table.Index;
 import net.sf.jsqlparser.statement.delete.Delete;
 import net.sf.jsqlparser.statement.drop.Drop;
 import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.update.Update;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -36,6 +37,7 @@ import static org.example.server.connectionManager.DbConnectionManager.getMongoC
 
 public class DBMSService {
     private static DBMSRepository dbmsRepository;
+    private static SelectService selectService;
     private static final String regexCreateDatabase = "CREATE\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexDropDatabase = "DROP\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexUseDatabase = "USE\\s+([\\w_]+);";
@@ -52,6 +54,7 @@ public class DBMSService {
 
     public DBMSService(DBMSRepository dbmsRepository) {
         this.dbmsRepository = dbmsRepository;
+        selectService = new SelectService(dbmsRepository);
     }
 
     public static void executeCommand(String sqlCommand) throws Exception {
@@ -90,6 +93,8 @@ public class DBMSService {
             dropTable(dropTable);
         } else if (statement instanceof CreateIndex createIndex) {
             createIndex(createIndex);
+        } else if (statement instanceof Select selectStatement) {
+            selectService.processSelect(selectStatement);
         } else
             throw new Exception("Eroare parsare comanda");
     }
@@ -181,7 +186,7 @@ public class DBMSService {
 
         Element indexFiles = tableElement.getChild("IndexFiles");
         Map<String, String> attributeValueMap = computeAttributeValueMap(insertColumns, values);
-        validatePrimaryKeyConstraint(dbmsRepository.getCurrentDatabase() + tableName,keyValueList.get(0));
+        validatePrimaryKeyConstraint(dbmsRepository.getCurrentDatabase() + tableName, keyValueList.get(0));
         processIndexFiles(indexFiles, attributeValueMap, keyValueList.get(0), primaryKeyIndexName);
         saveForeignKeys(foreignKeys, attributeValueMap, tableName, keyValueList.get(0));
         insertInMongoDb(dbmsRepository.getCurrentDatabase() + tableName, keyValueList.get(0), keyValueList.get(1));
@@ -276,6 +281,7 @@ public class DBMSService {
                 .toList();
         return new ForeignKey(refTable, attributes, refAttributes);
     }
+
     private static void insertInMongoDb(String collectionName, String key, String values) throws Exception {
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
@@ -427,7 +433,7 @@ public class DBMSService {
 
     private static String getRegexForIndex(Map<String, String> primaryKey, List<String> primaryKeysFromIndexAttributes) {
         StringBuilder regex = new StringBuilder();
-        for (Map.Entry<String,String> entry : primaryKey.entrySet()) {
+        for (Map.Entry<String, String> entry : primaryKey.entrySet()) {
             if (primaryKeysFromIndexAttributes.contains(entry.getKey())) {
                 regex.append(entry.getValue()).append("\\$*");
             } else {
@@ -529,6 +535,7 @@ public class DBMSService {
             }
         }
     }
+
     private static void validatePrimaryKey(Element table, Map<String, String> primaryKeys) throws Exception {
         Set<String> primaryKeysFromDb = getPrimaryKeysFromDb(table);
         if (!primaryKeysFromDb.equals(primaryKeys.keySet())) {
@@ -1026,8 +1033,8 @@ public class DBMSService {
                 Object values = document.get("values");
                 List<String> valuesSplit = List.of(((String) values).split("\\$"));
                 String newValue = valuesSplit.stream()
-                            .filter(val -> !val.equals(value))
-                            .collect(Collectors.joining());
+                        .filter(val -> !val.equals(value))
+                        .collect(Collectors.joining());
                 if (newValue.equals("")) {
                     Bson filter = Filters.eq("values", value);
                     DeleteResult result = collection.deleteOne(filter);

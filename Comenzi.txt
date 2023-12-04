@@ -58,3 +58,7 @@ DELETE FROM Orders1 WHERE OrderID = 3 AND FirstName = Andrei;
 
 DROP TABLE Persons1;
 DROP TABLE Orders1;
+SELECT * FROM Students WHERE Mark > 7;
+SELECT * FROM Students WHERE Mark < 7;
+SELECT * FROM Students WHERE Mark >= 7;
+SELECT * FROM Students WHERE Mark <= 7;
