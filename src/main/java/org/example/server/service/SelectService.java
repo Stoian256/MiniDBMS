@@ -1,5 +1,6 @@
 package org.example.server.service;
 
+import com.mongodb.client.AggregateIterable;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
@@ -14,9 +15,12 @@ import org.example.server.repository.DBMSRepository;
 import org.jdom2.Element;
 import org.bson.Document;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.ArrayList;
 
+import static com.mongodb.client.model.Filters.expr;
+import static com.mongodb.client.model.Filters.gt;
 import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
 
 public class SelectService {
@@ -47,9 +51,9 @@ public class SelectService {
 
                     String operator = comparisonOperator.getStringExpression();
                     if (existIndexForColumn(rootDataBases, tableName, columnName)) {
-                        MongoCollection<Document> studentsCollection = database.getCollection(dbmsRepository.getCurrentDatabase()+ tableName);
-                        MongoCollection<Document> indexCollection = database.getCollection(dbmsRepository.getCurrentDatabase()+tableName+"Ind"+columnName);
-                        List<String> matchingIDs = findMatchingIDs(indexCollection, columnName, Integer.toString(conditionValue), operator);
+                        MongoCollection<Document> studentsCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+                        MongoCollection<Document> indexCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName + "Ind" + columnName);
+                        List<String> matchingIDs = findMatchingIDs(indexCollection, columnName, conditionValue, operator);
                         List<String> result = retrieveEntities(studentsCollection, matchingIDs);
                         for (String entity : result) {
                             System.out.println(entity);
@@ -82,7 +86,7 @@ public class SelectService {
     private static List<String> findMatchingIDs(
             MongoCollection<Document> indexCollection,
             String columnName,
-            String conditionValue,
+            Integer conditionValue,
             String operator
     ) {
         List<String> matchingIDs = new ArrayList<>();
@@ -90,23 +94,23 @@ public class SelectService {
 
         switch (operator) {
             case ">":
-                query.append("_id", new Document("$gt", conditionValue));
+                query.append("$expr", new Document("$gt", Arrays.asList(new Document("$toInt", "$_id"), conditionValue)));
                 break;
             case ">=":
-                query.append("_id", new Document("$gte", conditionValue));
+                query.append("$expr", new Document("$gte", Arrays.asList(new Document("$toInt", "$_id"), conditionValue)));
                 break;
             case "<":
-                query.append("_id", new Document("$lt", conditionValue));
+                query.append("$expr", new Document("$lt", Arrays.asList(new Document("$toInt", "$_id"), conditionValue)));
                 break;
             case "<=":
-                query.append("_id", new Document("$lte", conditionValue));
+                query.append("$expr", new Document("$lte", Arrays.asList(new Document("$toInt", "$_id"), conditionValue)));
                 break;
             default:
                 // Operatorul nu este recunoscut
                 // Poți trata această situație în funcție de necesitățile tale
                 break;
         }
-
+        System.out.println(query.toJson());
         for (Document document : indexCollection.find(query)) {
             matchingIDs.add(document.get("values").toString());
         }
