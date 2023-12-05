@@ -42,13 +42,14 @@ public class SelectService {
         Element tableElement = getTableElement(tableName);
         List<String> primaryKeys = getPrimaryKeys(tableElement);
         List<String> attributes = getAttributesForTable(tableElement);
+        List<String> selectedColumns = plainSelect.getSelectItems().stream().map(Objects::toString).collect(Collectors.toList());
         attributes.removeAll(primaryKeys);
         Expression where = plainSelect.getWhere(); // Obținem clauza WHERE
 
 
         if (where != null) {
             List<Expression> conditions = extractConditions(where);
-            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, plainSelect.getSelectItems().stream().map(Objects::toString).collect(Collectors.toList()));
+            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns);
         }
     }
 
