@@ -56,5 +56,32 @@
         </IndexFile>
       </IndexFiles>
     </Table>
+    <Table tableName="Students3" fileName="MyDBStudents3">
+      <Structure>
+        <Attribute attributeName="StudID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="GroupID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="Name" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Tel" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Email" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Mark" type="int" length="64" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>StudID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile indexName="MyDBStudents3IndMark" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Mark</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+        <IndexFile indexName="MyDBStudents3IndEmail" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Email</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
   </DataBase>
 </Databases>
