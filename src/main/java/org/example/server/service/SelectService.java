@@ -35,7 +35,6 @@ public class SelectService {
         List<String> selectedColumns = getSelectedColumns(plainSelect);
 
         List<String> selectedValues = new ArrayList<>();
-        selectedValues.add(String.join(";", selectedColumns));
 
         Element tableElement = DBMSService.getTableByName(fromTableName);
         List<String> columnsForTable = getAttributesForTable(tableElement);
@@ -52,15 +51,9 @@ public class SelectService {
             validateTableNameAndColumn(columnsForTable, columns);
             List<IndexFile> indexFilesForSelectedColumns = getIndexesForColumnFromWhere(tableElement, tableColumnsFromWhereClause);
             columnsForTable.removeAll(primaryKeys);
-            if (indexFilesForSelectedColumns.isEmpty()) {
-                selectWithIndex(collectionName, andExpressionsFromWhereClause, indexFilesForSelectedColumns, columnsForTable);
-            } else {
-                selectWithoutIndex(collectionName, columnsForTable, andExpressionsFromWhereClause);
-            }
-        } else {
-            validateTableNameAndColumn(columnsForTable, new HashSet<>(selectedColumns));
-            //selectedValues.addAll(selectWithoutIndex(collectionName, positionsOfSelectedColumn, positionsOfPrimaryKeys));
+            selectedValues.addAll(select(collectionName, andExpressionsFromWhereClause, indexFilesForSelectedColumns, columnsForTable, selectedColumns, primaryKeys));
         }
+
         if (isDistinct) {
             selectedValues = selectedValues.stream()
                     .distinct()
@@ -120,29 +113,62 @@ public class SelectService {
                 .toList();
     }
 
-    private static List<String> selectWithIndex(String collectionName, List<Expression> andExpressionsFromWhereClause, List<IndexFile> indexFiles, List<String> attributes) throws Exception {
-        List<String> primaryKeys = new ArrayList<>();
+    private static List<String> select(String collectionName,
+                                       List<Expression> andExpressionsFromWhereClause,
+                                       List<IndexFile> indexFiles,
+                                       List<String> attributes,
+                                       List<String> selectedColumns,
+                                       List<String> primaryKeys) throws Exception {
+        List<String> primaryKeyValues = new ArrayList<>();
+        List<Expression> expressionsForIndex = new ArrayList<>();
         for (IndexFile indexFile : indexFiles) {
-            List<String> primaryKeysFromIndex = selectFromIndex(indexFile.getIndexFileName(), getIdForIndex(indexFile, andExpressionsFromWhereClause));
-            if (primaryKeys.isEmpty()) {
-                primaryKeys.addAll(primaryKeysFromIndex);
+            expressionsForIndex.addAll(getExpressionsForIndex(indexFile, andExpressionsFromWhereClause));
+            List<String> primaryKeysFromIndex = selectFromIndex(indexFile.getIndexFileName(), getIdForIndex(expressionsForIndex));
+            if (primaryKeyValues.isEmpty()) {
+                primaryKeyValues.addAll(primaryKeysFromIndex);
             } else {
-                primaryKeys.retainAll(primaryKeysFromIndex);
+                primaryKeyValues.retainAll(primaryKeysFromIndex);
             }
         }
-        List<Expression> whereNoIndex = getWhereNoIndex(andExpressionsFromWhereClause, indexFiles);
-        return selectByPrimaryKeys(collectionName, primaryKeys, attributes, whereNoIndex);
+        List<Expression> whereNoIndex = getWhereNoIndex(andExpressionsFromWhereClause, expressionsForIndex);
+        List<Document> documents = selectByPrimaryKeys(collectionName, primaryKeyValues, attributes, whereNoIndex);
+        return projection(documents, selectedColumns, attributes, primaryKeys);
     }
 
-    private static List<Expression> getWhereNoIndex(List<Expression> andExpressionsFromWhereClause, List<IndexFile> indexFiles) {
+    private static List<String> projection(List<Document> documents, List<String> selectedColumns, List<String> attributes, List<String> primaryKeys) {
+        List<String> values = new ArrayList<>();
+        if(selectedColumns.contains("*")) {
+            selectedColumns.clear();
+            selectedColumns.addAll(primaryKeys);
+            selectedColumns.addAll(attributes);
+        }
+
+        selectedColumns.forEach(column -> System.out.print(column + " "));
+        System.out.println();
+
+        documents.forEach(document -> {
+            selectedColumns.forEach(
+                    selectedColumn -> {
+                        Integer keyPosition = primaryKeys.indexOf(selectedColumn);
+                        Integer valuePosition = attributes.indexOf(selectedColumn);
+                        if (keyPosition != -1) {
+                            values.add(document.getString("_id").split("$")[keyPosition] + " ");
+                        } else if (valuePosition != -1) {
+                            values.add(document.getString("values").split("#")[valuePosition] + " ");
+                        }
+                    }
+            );
+        });
+        return values;
+    }
+
+    private static List<Expression> getWhereNoIndex(List<Expression> andExpressionsFromWhereClause, List<Expression> expressionsForIndex) {
         return andExpressionsFromWhereClause.stream()
-                .filter(expression ->
-                        indexFiles.stream().noneMatch(index -> index.getAttributes().contains(expression.getASTNode().jjtGetFirstToken().toString())))
+                .filter(expression -> !expressionsForIndex.contains(expression))
                 .toList();
     }
 
-    private static List<String> selectByPrimaryKeys(String collectionName, List<String> primaryKeys, List<String> attributes, List<Expression> whereNoIndex) throws Exception {
-        List<String> values = new ArrayList<>();
+    private static List<Document> selectByPrimaryKeys(String collectionName, List<String> primaryKeys, List<String> attributes, List<Expression> whereNoIndex) throws Exception {
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
             MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
@@ -153,29 +179,10 @@ public class SelectService {
             while (cursor.hasNext()) {
                 documents.add(cursor.next());
             }
-            computeInMemoryFilters(documents, attributes, whereNoIndex);
+            return computeInMemoryFilters(documents, attributes, whereNoIndex);
         } catch (Exception e) {
             throw new Exception(e.getMessage());
         }
-        return values;
-    }
-
-    private static List<String> selectWithoutIndex(String collectionName, List<String> attributes, List<Expression> andExpressionsFromWhereClause) throws Exception {
-        List<String> values = new ArrayList<>();
-        try (MongoClient client = getMongoClient()) {
-            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
-            MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
-
-            MongoCursor<Document> cursor = collection.find().iterator();
-            List<Document> documents = new ArrayList<>();
-            while (cursor.hasNext()) {
-                documents.add(cursor.next());
-            }
-            computeInMemoryFilters(documents, attributes, andExpressionsFromWhereClause);
-        } catch (Exception e) {
-            throw new Exception(e.getMessage());
-        }
-        return values;
     }
 
     private static List<Document> computeInMemoryFilters(List<Document> result, List<String> attributes, List<Expression> whereNoIndex) {
@@ -250,25 +257,32 @@ public class SelectService {
         return result;
     }
 
-    private static String getIdForIndex(IndexFile indexFile, List<Expression> andExpressionsFromWhereClause) {
-        StringBuilder value = new StringBuilder();
+    private static List<Expression> getExpressionsForIndex(IndexFile indexFile, List<Expression> andExpressionsFromWhereClause) {
+        List<Expression> expressions = new ArrayList<>();
         for (String attribute : indexFile.getAttributes()) {
-            Optional<String> valueForAttribute = getRightValueForExpression(attribute, andExpressionsFromWhereClause);
-            if (valueForAttribute.isPresent()) {
-                if (value.length() == 0) {
-                    value.append(valueForAttribute.get());
-                } else {
-                    value.append("\\$").append(valueForAttribute.get());
-                }
+            Optional<Expression> expression = getExpressionByLeftExpression(attribute, andExpressionsFromWhereClause);
+            expression.ifPresent(expressions::add);
+        }
+        return expressions;
+    }
+
+    private static String getIdForIndex(List<Expression> expressions) {
+        StringBuilder value = new StringBuilder();
+        for (Expression expression : expressions) {
+            String valueForAttribute = expression.getASTNode().jjtGetLastToken().toString();
+            if (value.length() == 0) {
+                value.append(valueForAttribute);
+            } else {
+                value.append("\\$").append(valueForAttribute);
             }
         }
         return value.toString();
     }
 
-    private static Optional<String> getRightValueForExpression(String leftExpression, List<Expression> andExpressionsFromWhereClause) {
+    private static Optional<Expression> getExpressionByLeftExpression(String leftExpression, List<Expression> andExpressionsFromWhereClause) {
         for (Expression expression : andExpressionsFromWhereClause) {
             if (expression.getASTNode().jjtGetFirstToken().toString().equals(leftExpression)) {
-                return Optional.ofNullable(expression.getASTNode().jjtGetLastToken().toString());
+                return Optional.of(expression);
             }
         }
         return Optional.empty();
