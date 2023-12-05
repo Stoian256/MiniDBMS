@@ -4,7 +4,7 @@
     <Table tableName="Students" fileName="MyDBStudents">
       <Structure>
         <Attribute attributeName="StudID" type="int" length="64" isnull="0" />
-        <Attribute attributeName="GrupID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="GroupID" type="int" length="64" isnull="0" />
         <Attribute attributeName="Name" type="varchar" length="50" isnull="1" />
         <Attribute attributeName="Tel" type="varchar" length="50" isnull="1" />
         <Attribute attributeName="Email" type="varchar" length="50" isnull="1" />
@@ -16,19 +16,42 @@
       <foreignKeys />
       <uniqueKeys />
       <IndexFiles>
-        <IndexFile indexName="MyDBStudentsIndMark" isUnique="0" indexType="BTree">
-          <IndexAttributes>
-            <IAttribute>Mark</IAttribute>
-          </IndexAttributes>
-        </IndexFile>
         <IndexFile indexName="MyDBStudentsIndStudID" isUnique="0" indexType="BTree">
           <IndexAttributes>
             <IAttribute>StudID</IAttribute>
           </IndexAttributes>
         </IndexFile>
+        <IndexFile indexName="MyDBStudentsIndMark" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Mark</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
         <IndexFile indexName="MyDBStudentsIndEmail" isUnique="0" indexType="BTree">
           <IndexAttributes>
             <IAttribute>Email</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
+    <Table tableName="Students1" fileName="MyDBStudents1">
+      <Structure>
+        <Attribute attributeName="StudID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="GroupID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="Name" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Tel" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Email" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Mark" type="int" length="64" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>StudID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile indexName="MyDBStudents1IndMarkAndName" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Mark</IAttribute>
+            <IAttribute>Name</IAttribute>
           </IndexAttributes>
         </IndexFile>
       </IndexFiles>
