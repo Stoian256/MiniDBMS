@@ -18,6 +18,7 @@ import org.bson.Document;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
@@ -47,7 +48,7 @@ public class SelectService {
 
         if (where != null) {
             List<Expression> conditions = extractConditions(where);
-            processConditions(rootDataBases, database, tableName, conditions, attributes);
+            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, plainSelect.getSelectItems().stream().map(Objects::toString).collect(Collectors.toList()));
         }
     }
 
@@ -65,7 +66,7 @@ public class SelectService {
         return conditions;
     }
 
-    private void processConditions(Element rootDataBases, MongoDatabase database, String tableName, List<Expression> conditions, List<String> attributes) throws Exception {
+    private void processConditions(Element rootDataBases, MongoDatabase database, String tableName, List<Expression> conditions, List<String> attributes, List<String> primaryKeys, List<String> selectedColumns) throws Exception {
         List<String> allMatchingIDs = new ArrayList<>();
         List<Expression> whereNoIndex = new ArrayList<>();
 
@@ -85,7 +86,30 @@ public class SelectService {
             MongoCollection<Document> studentsCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
             List<Document> result = retrieveEntities(studentsCollection, allMatchingIDs);
             result = computeInMemoryFilters(result, attributes, whereNoIndex);
-            result.forEach(System.out::println);
+
+            if(selectedColumns.contains("*")) {
+                selectedColumns.clear();
+                selectedColumns.addAll(primaryKeys);
+                selectedColumns.addAll(attributes);
+            }
+
+            selectedColumns.forEach(column -> System.out.print(column + " "));
+            System.out.println();
+
+            result.forEach(document -> {
+                selectedColumns.forEach(
+                        selectedColumn -> {
+                            Integer keyPosition = primaryKeys.indexOf(selectedColumn);
+                            Integer valuePosition = attributes.indexOf(selectedColumn);
+                            if (keyPosition!=-1){
+                                System.out.print(document.getString("_id").split("$")[keyPosition] +" ");
+                            } else if (valuePosition!=-1) {
+                                System.out.print(document.getString("values").split("#")[valuePosition] +" ");
+                            }
+                        }
+                );
+                System.out.println();
+            });
         } else {
             System.out.println("Nu au fost găsite înregistrări care să satisfacă toate condițiile.");
         }
