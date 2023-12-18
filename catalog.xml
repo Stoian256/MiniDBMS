@@ -83,5 +83,45 @@
         </IndexFile>
       </IndexFiles>
     </Table>
+    <Table tableName="Persons" fileName="MyDBPersons">
+      <Structure>
+        <Attribute attributeName="PersonID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="FirstName" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="LastName" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>PersonID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles />
+    </Table>
+    <Table tableName="Orders" fileName="MyDBOrders">
+      <Structure>
+        <Attribute attributeName="OrderID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="OrderNumber" type="int" length="64" isnull="0" />
+        <Attribute attributeName="PersonID" type="int" length="64" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>OrderID</pkAttribute>
+      </primaryKey>
+      <foreignKeys>
+        <foreignKey>
+          <fkAttribute>PersonID</fkAttribute>
+          <references>
+            <refTable>Persons</refTable>
+            <refAttribute>PersonID</refAttribute>
+          </references>
+        </foreignKey>
+      </foreignKeys>
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile keyLength="64" isUnique="0" indexType="BTree" indexName="MyDBOrdersFkIndPersonIDRefPersons">
+          <IndexAttributes>
+            <IAttribute>PersonID</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
   </DataBase>
 </Databases>
