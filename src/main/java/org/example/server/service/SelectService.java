@@ -53,9 +53,9 @@ public class SelectService {
         if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()) {
             // Se procesează clauzele JOIN
             List<Join> joins = plainSelect.getJoins();
-            //processRecursiveJoin(rootDataBases, database, tableNames, joins, selectedColumns);
-            //processRecursiveSortMergeJoin(database,tableNames,attributes,selectedColumns);
-            processHashJoin(database,tableNames,attributes,selectedColumns);
+            processIndexedNestedJoin(rootDataBases, database, tableNames, joins, selectedColumns);
+            //processRecursiveSortMergeJoin(database, tableNames, attributes, selectedColumns);
+            //processHashJoin(database, tableNames, attributes, selectedColumns);
         } else {
             if (where != null) {
                 List<Expression> conditions = extractConditions(where);
@@ -82,50 +82,49 @@ public class SelectService {
         return tableNames;
     }
 
-    private void processRecursiveJoin(Element rootDataBases, MongoDatabase database, List<String> tableNames, List<Join> joins, List<String> selectedColumns) {
+    private void processIndexedNestedJoin(Element rootDataBases, MongoDatabase database, List<String> tableNames, List<Join> joins, List<String> selectedColumns) {
         if (tableNames.size() >= 2) {
             String leftTable = tableNames.get(0);
-            String rightTable = tableNames.get(1);
+            tableNames.remove(0);
             //System.out.println(leftTable);
             //System.out.println(rightTable);
 
             MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + leftTable);
-            MongoCollection<Document> rightCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + rightTable);
-            //System.out.println(leftCollection.find());
-            //System.out.println(rightCollection.find());
+            for (String rightTableName : tableNames) {
+                List<String> appendResult = new ArrayList<>();
 
-            List<String> leftPrimaryKeys = getPrimaryKeys(getTableElement(leftTable));
-            List<String> rightPrimaryKeys = getPrimaryKeys(getTableElement(rightTable));
-            //System.out.println(leftPrimaryKeys);
-            //System.out.println(rightPrimaryKeys);
 
-            //boolean leftHasKeyIndex = checkIfIndexExists(database, leftTable, leftPrimaryKeys);
-            //boolean rightHasKeyIndex = checkIfIndexExists(database, rightTable, rightPrimaryKeys);
+                MongoCollection<Document> rightCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + rightTableName);
+                //System.out.println(leftCollection.find());
+                //System.out.println(rightCollection.find());
 
-            if (true) {
-                for (Document leftDoc : leftCollection.find()) {
-                    for (Document rightDoc : rightCollection.find()) {
-                        if (leftDoc.get("_id").equals(rightDoc.get("values").toString().split("#")[1])) {
-                            List<String> remainingTables = new ArrayList<>(tableNames.subList(2, tableNames.size()));
-                            if (!remainingTables.isEmpty()) {
-                                List<String> combinedColumns = new ArrayList<>(selectedColumns);
-                                combinedColumns.addAll(getAttributesForTable(getTableElement(rightTable)));
+                List<String> leftPrimaryKeys = getPrimaryKeys(getTableElement(leftTable));
+                List<String> rightPrimaryKeys = getPrimaryKeys(getTableElement(rightTableName));
+                //System.out.println(leftPrimaryKeys);
+                //System.out.println(rightPrimaryKeys);
 
-                                processRecursiveJoin(rootDataBases, database, remainingTables, joins.subList(1, joins.size()), combinedColumns);
-                            } else {
-                                // Dacă nu mai sunt tabele de procesat, afișăm rezultatul conform coloanelor selectate
-                                System.out.println(leftDoc);
-                                System.out.println(rightDoc);
-                                /*for (String column : selectedColumns) {
-                                    System.out.print(combinedDoc.get(column) + " ");
-                                }*/
-                                System.out.println();
+                //boolean leftHasKeyIndex = checkIfIndexExists(database, leftTable, leftPrimaryKeys);
+                //boolean rightHasKeyIndex = checkIfIndexExists(database, rightTable, rightPrimaryKeys);
+
+                if (true) {
+                    for (Document leftDoc : leftCollection.find()) {
+                        for (Document rightDoc : rightCollection.find()) {
+                            if (leftDoc.get("_id").equals(rightDoc.get("values").toString().split("#")[0])) {
+                                //List<String> remainingTables = new ArrayList<>(tableNames.subList(2, tableNames.size()));
+
+                                    //List<String> combinedColumns = new ArrayList<>(selectedColumns);
+                                    //combinedColumns.addAll(getAttributesForTable(getTableElement(rightTableName)));
+
+                                    appendResult.add(leftDoc.toString()+rightDoc);
+
                             }
                         }
                     }
+                } else {
+                    System.out.println("Nu există index pentru cheile primare într-una dintre tabele.");
                 }
-            } else {
-                System.out.println("Nu există index pentru cheile primare într-una dintre tabele.");
+                appendResult.forEach(System.out::println);
+                leftCollection = rightCollection;
             }
         } else {
             System.out.println("Sunt necesare cel puțin două tabele pentru JOIN.");
@@ -135,54 +134,61 @@ public class SelectService {
     private void processRecursiveSortMergeJoin(MongoDatabase database, List<String> tableNames, List<String> joinAttributes, List<String> selectedColumns) {
         if (tableNames.size() >= 2) {
             String leftTableName = tableNames.get(0);
-            String rightTableName = tableNames.get(1);
+            tableNames.remove(0);
 
             String leftJoinAttribute = "_id";
             String rightJoinAttribute = "values";
             System.out.println(rightJoinAttribute);
 
-            MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase()+leftTableName);
-            MongoCollection<Document> rightCollection = database.getCollection(dbmsRepository.getCurrentDatabase()+rightTableName);
+            MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + leftTableName);
 
-            // Sortăm tabelele după atributul de join
-            Bson sortLeft = Sorts.ascending(leftJoinAttribute);
-            Bson sortRight = Sorts.ascending(rightJoinAttribute);
-            FindIterable<Document> leftSorted = leftCollection.find().sort(sortLeft);
-            FindIterable<Document> rightSorted = rightCollection.find().sort(sortRight);
+            List<String> result = new ArrayList<>();
+            int resultIndex = 0;
+            boolean isFirst = true;
+            for (String rightTableName : tableNames) {
+                List<String> appendResult = new ArrayList<>();
+                MongoCollection<Document> rightCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + rightTableName);
 
-            // Inițializăm iteratorii pentru tabelele sortate
-            MongoCursor<Document> leftCursor = leftSorted.iterator();
-            MongoCursor<Document> rightCursor = rightSorted.iterator();
+                // Sortăm tabelele după atributul de join
+                Bson sortLeft = Sorts.ascending(leftJoinAttribute);
+                Bson sortRight = Sorts.ascending(rightJoinAttribute);
+                FindIterable<Document> leftSorted = leftCollection.find().sort(sortLeft);
+                FindIterable<Document> rightSorted = rightCollection.find().sort(sortRight);
 
-            List<Document> leftDocs = new ArrayList<>();
-            List<Document> rightDocs = new ArrayList<>();
+                // Inițializăm iteratorii pentru tabelele sortate
+                MongoCursor<Document> leftCursor = leftSorted.iterator();
+                MongoCursor<Document> rightCursor = rightSorted.iterator();
 
-            // Adăugăm documentele sortate în liste
-            while (leftCursor.hasNext()) {
-                leftDocs.add(leftCursor.next());
-            }
-            while (rightCursor.hasNext()) {
-                rightDocs.add(rightCursor.next());
-            }
+                List<Document> leftDocs = new ArrayList<>();
+                List<Document> rightDocs = new ArrayList<>();
 
-            // Realizăm Sort Merge Join între tabelele sortate
-            List<Document> tuples = new ArrayList<>();
-            int leftIndex = 0, rightIndex = 0;
+                // Adăugăm documentele sortate în liste
+                while (leftCursor.hasNext()) {
+                    leftDocs.add(leftCursor.next());
+                }
+                while (rightCursor.hasNext()) {
+                    rightDocs.add(rightCursor.next());
+                }
 
-            while (leftIndex < leftDocs.size() && rightIndex < rightDocs.size()) {
-                Document leftDoc = leftDocs.get(leftIndex);
-                Document rightDoc = rightDocs.get(rightIndex);
+                // Realizăm Sort Merge Join între tabelele sortate
+                List<Document> tuples = new ArrayList<>();
+                int leftIndex = 0, rightIndex = 0;
+
+                while (leftIndex < leftDocs.size() && rightIndex < rightDocs.size()) {
+                    Document leftDoc = leftDocs.get(leftIndex);
+                    Document rightDoc = rightDocs.get(rightIndex);
 
 
-                // Obținem valorile atributelor de join din documentele curente
-                Object leftJoinValue = leftDoc.get(leftJoinAttribute);
-                Object rightJoinValue = rightDoc.get(rightJoinAttribute).toString().split("#")[1];
+                    // Obținem valorile atributelor de join din documentele curente
+                    Object leftJoinValue = leftDoc.get(leftJoinAttribute);
+                    Object rightJoinValue = rightDoc.get(rightJoinAttribute).toString().split("#")[0];
 
-                // Comparăm valorile pentru a verifica condiția de join
-                int comparisonResult = ((Comparable) leftJoinValue).compareTo(rightJoinValue);
 
-                if (comparisonResult == 0) {
-                    // Dacă valorile sunt egale, facem join și adăugăm rezultatul în lista de tuple
+                    // Comparăm valorile pentru a verifica condiția de join
+                    int comparisonResult = ((Comparable) leftJoinValue).compareTo(rightJoinValue);
+
+                    if (comparisonResult == 0) {
+                        // Dacă valorile sunt egale, facem join și adăugăm rezultatul în lista de tuple
                     /*Document tuple = new Document();
                     for (String column : selectedColumns) {
                         if (leftDoc.containsKey(column)) {
@@ -192,29 +198,30 @@ public class SelectService {
                         }
                     }
                     tuples.add(tuple);*/
-                    System.out.println(leftDoc);
-                    System.out.println(rightDoc);
-                    System.out.println();
-                    rightIndex++;
-                } else if (comparisonResult < 0) {
-                    leftIndex++;
-                } else {
-                    rightIndex++;
+                        if (!isFirst) {
+                            appendResult.add(leftDoc.toString() + rightDoc);
+                            //result.set(resultIndex, result.get(resultIndex) + rightDoc);
+                            resultIndex++;
+                        } else {
+                            appendResult.add(leftDoc.toString() + rightDoc);
+                        }
+
+
+                        rightIndex++;
+                    } else if (comparisonResult < 0) {
+                        leftIndex++;
+                    } else {
+                        rightIndex++;
+                    }
                 }
+                appendResult.forEach(System.out::println);
+                leftCollection = rightCollection;
+                resultIndex = 0;
+                isFirst = false;
             }
 
-            // Reducem lista de tabele și atributele de join pentru a realiza Sort Merge Join recursiv pentru restul tabelelor
-            List<String> remainingTables = new ArrayList<>(tableNames.subList(2, tableNames.size()));
-            List<String> remainingJoinAttributes = new ArrayList<>(joinAttributes.subList(2, joinAttributes.size()));
 
-            // Apelăm recursiv pentru restul tabelelor
-            if (!remainingTables.isEmpty())
-                processRecursiveSortMergeJoin(database, remainingTables, remainingJoinAttributes, selectedColumns);
-
-            // Afișăm rezultatul Sort Merge Join pentru tabelele date
-            for (Document tuple : tuples) {
-                System.out.println(tuple.toJson());
-            }
+            // result.forEach(System.out::println);
         } else {
             System.out.println("Sunt necesare cel puțin două tabele pentru JOIN.");
         }
@@ -222,43 +229,65 @@ public class SelectService {
 
     private void processHashJoin(MongoDatabase database, List<String> tableNames, List<String> joinAttribute, List<String> selectedColumns) {
         String leftTableName = tableNames.get(0);
-        String rightTableName = tableNames.get(1);
+        tableNames.remove(0);
 
         String leftJoinAttribute = "_id";
         String rightJoinAttribute = "values";
 
-        MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase()+leftTableName);
-        MongoCollection<Document> rightCollection = database.getCollection(dbmsRepository.getCurrentDatabase()+rightTableName);
+        MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + leftTableName);
 
-        // Pasul 1: Crearea unei structuri de tabelă hash în memorie pentru colecția cu mai puține elemente
-        Map<Object, Document> hashTable = new HashMap<>();
-        FindIterable<Document> smallerRecords = leftCollection.find();
-        for (Document record : smallerRecords) {
-            Object key = record.get(leftJoinAttribute);
-            hashTable.put(key, record);
-        }
+        List<String> result = new ArrayList<>();
+        int resultIndex = 0;
+        boolean isFirst = true;
 
-        // Pasul 2: Iterarea colecției mai mari și găsirea înregistrărilor corespunzătoare în tabela hash
-        FindIterable<Document> largerRecords = rightCollection.find();
-        List<Document> tuples = new ArrayList<>();
-        for (Document record : largerRecords) {
-            Object joinKeyValue = record.get(rightJoinAttribute).toString().split("#")[1];
-            Document matchingRecord = hashTable.get(joinKeyValue);
+        for (String rightTableName : tableNames) {
+            List<String> appendResult = new ArrayList<>();
+            MongoCollection<Document> rightCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + rightTableName);
 
-            if (matchingRecord != null) {
-                // Dacă găsim o corespondență, construim un tuple pentru rezultatul JOIN-ului
-                Document tuple = new Document();
+            // Pasul 1: Crearea unei structuri de tabelă hash în memorie pentru colecția cu mai puține elemente
+            Map<Object, Document> hashTable = new HashMap<>();
+            FindIterable<Document> smallerRecords = leftCollection.find();
+            for (Document record : smallerRecords) {
+                Object key = record.get(leftJoinAttribute);
+                hashTable.put(key, record);
+            }
+
+            // Pasul 2: Iterarea colecției mai mari și găsirea înregistrărilor corespunzătoare în tabela hash
+            FindIterable<Document> largerRecords = rightCollection.find();
+            List<Document> tuples = new ArrayList<>();
+            for (Document record : largerRecords) {
+                Object joinKeyValue = record.get(rightJoinAttribute).toString().split("#")[0];
+                Document matchingRecord = hashTable.get(joinKeyValue);
+
+                if (matchingRecord != null) {
+                    // Dacă găsim o corespondență, construim un tuple pentru rezultatul JOIN-ului
+                    Document tuple = new Document();
                 /*for (String column : selectedColumns) {
                     if (matchingRecord.containsKey(column)) {
                         tuple.append(column, matchingRecord.get(column));
                     }
                 }
                 tuples.add(tuple);*/
-                System.out.println(record);
-                System.out.println(matchingRecord);
-                System.out.println();
+                    if (!isFirst) {
+                        //System.out.println(resultIndex);
+                        appendResult.add(matchingRecord.toString() + record);
+                        resultIndex++;
+                    } else {
+                        appendResult.add(matchingRecord.toString() + record);
+                    }
+                    //System.out.println(record);
+                    //System.out.println(matchingRecord);
+                    //System.out.println();
+                }
             }
+            appendResult.forEach(System.out::println);
+            result = appendResult;
+            //result.forEach(System.out::println);
+            leftCollection = rightCollection;
+            resultIndex = 0;
+            isFirst = false;
         }
+        //result.forEach(System.out::println);
 
         // Afișăm rezultatul Hash Join
         /*for (Document tuple : tuples) {

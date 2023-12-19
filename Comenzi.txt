@@ -103,3 +103,31 @@ SELECT Name, Email from Students1 WHERE Mark=8 AND Name=Ana;
 CREATE TABLE Persons ( PersonID int NOT NULL, FirstName varchar(50), LastName varchar(50), PRIMARY KEY (PersonID));
 CREATE TABLE Orders ( OrderID int NOT NULL, OrderNumber int NOT NULL, PersonID int, PRIMARY KEY (OrderID), FOREIGN KEY (PersonID) REFERENCES Persons(PersonID));
 SELECT Persons.PersonID, Persons.FirstName, Persons.LastName, Orders.OrderID, Orders.OrderNumber FROM Persons INNER JOIN Orders ON Persons.PersonID = Orders.PersonID;
+
+CREATE TABLE Country ( CountryID int NOT NULL, CountryName varchar(50), CountryCode varchar(50), PRIMARY KEY (CountryID));
+CREATE TABLE City ( CityID int NOT NULL, CountryID int, CityName varchar(50), PRIMARY KEY (CityID), FOREIGN KEY (CountryID) REFERENCES Country(CountryID));
+CREATE TABLE Customer ( CustomerID int NOT NULL, CityID int, CustomerName varchar(50), PRIMARY KEY (CustomerID), FOREIGN KEY (CityID) REFERENCES City(CityID));
+
+INSERT INTO Country (CountryID, CountryName, CountryCode) VALUES (1, Romania, ROU);
+INSERT INTO Country (CountryID, CountryName, CountryCode) VALUES (2, Portugal, PTR);
+INSERT INTO Country (CountryID, CountryName, CountryCode) VALUES (3, Moldova, MDA);
+INSERT INTO Country (CountryID, CountryName, CountryCode) VALUES (4, Belgium, BEL);
+
+INSERT INTO City (CityID, CountryID, CityName) VALUES (1, 1, OrasROU);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (2, 1, OrasROU2);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (3, 2, OrasPTR);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (4, 3, OrasMDA);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (5, 4, OrasBEL);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (6, 4, OrasBEL2);
+
+
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (1, 1, Customer1);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (2, 1, Customer2);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (3, 2, Customer3);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (4, 2, Customer4);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (5, 3, Customer5);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (6, 4, Customer6);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (7, 5, Customer7);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (8, 6, Customer8);
+
+SELECT Country.CountryID, Country.CountryName, Country.CountryCode, City.CityID, City.CityName, Customer.CustomerID, Customer.CustomerName FROM Country INNER JOIN City ON City.CountryID = Country.CountryID INNER JOIN Customer ON Customer.CityID = City.CityID;
