@@ -130,4 +130,5 @@ INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (6, 4, Customer6)
 INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (7, 5, Customer7);
 INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (8, 6, Customer8);
 
-SELECT Country.CountryID, Country.CountryName, Country.CountryCode, City.CityID, City.CityName, Customer.CustomerID, Customer.CustomerName FROM Country INNER JOIN City ON City.CountryID = Country.CountryID INNER JOIN Customer ON Customer.CityID = City.CityID;
+SELECT Country.CountryID, Country.CountryName, Country.CountryCode, City.CityID, City.CityName, Customer.CustomerID, Customer.CustomerName FROM Country INNER JOIN City ON City.CountryID = Country.CountryID INNER JOIN Customer ON Customer.CityID = City.CityID WHERE City.CityName = 'Oras'
+SELECT Country1.CountryID, Country1.CountryName, Country1.CountryCode, City.CityID, City.CityName, Customer.CustomerID, Customer.CustomerName FROM Country1 INNER JOIN City ON City.CountryID = Country1.CountryID INNER JOIN Customer ON Customer.CityID = City.CityID WHERE City.CityName = 'Oras'

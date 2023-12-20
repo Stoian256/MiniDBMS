@@ -290,6 +290,7 @@ public class DBMSService {
             Document document = new Document("_id", key).append("values", values);
             collection.insertOne(document);
         } catch (Exception e) {
+            System.out.println(e);
             throw new Exception("Primary key constraint violated!");
         }
     }

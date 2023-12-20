@@ -190,5 +190,18 @@
         </IndexFile>
       </IndexFiles>
     </Table>
+    <Table tableName="Country1" fileName="MyDBCountry1">
+      <Structure>
+        <Attribute attributeName="CountryID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="CountryName" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="CountryCode" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>CountryID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles />
+    </Table>
   </DataBase>
 </Databases>

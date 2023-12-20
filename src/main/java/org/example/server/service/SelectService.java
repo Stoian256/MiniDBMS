@@ -53,9 +53,9 @@ public class SelectService {
         if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()) {
             // Se procesează clauzele JOIN
             List<Join> joins = plainSelect.getJoins();
-            processIndexedNestedJoin(rootDataBases, database, tableNames, joins, selectedColumns);
+            //processIndexedNestedJoin(rootDataBases, database, tableNames, joins, selectedColumns);
             //processRecursiveSortMergeJoin(database, tableNames, attributes, selectedColumns);
-            //processHashJoin(database, tableNames, attributes, selectedColumns);
+            processHashJoin(database, tableNames, attributes, selectedColumns);
         } else {
             if (where != null) {
                 List<Expression> conditions = extractConditions(where);
@@ -114,7 +114,6 @@ public class SelectService {
 
                                     //List<String> combinedColumns = new ArrayList<>(selectedColumns);
                                     //combinedColumns.addAll(getAttributesForTable(getTableElement(rightTableName)));
-
                                     appendResult.add(leftDoc.toString()+rightDoc);
 
                             }
@@ -124,6 +123,7 @@ public class SelectService {
                     System.out.println("Nu există index pentru cheile primare într-una dintre tabele.");
                 }
                 appendResult.forEach(System.out::println);
+                System.out.println();
                 leftCollection = rightCollection;
             }
         } else {
@@ -215,6 +215,7 @@ public class SelectService {
                     }
                 }
                 appendResult.forEach(System.out::println);
+                System.out.println();
                 leftCollection = rightCollection;
                 resultIndex = 0;
                 isFirst = false;
@@ -281,6 +282,7 @@ public class SelectService {
                 }
             }
             appendResult.forEach(System.out::println);
+            System.out.println();
             result = appendResult;
             //result.forEach(System.out::println);
             leftCollection = rightCollection;
