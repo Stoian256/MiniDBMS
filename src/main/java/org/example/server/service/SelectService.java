@@ -8,6 +8,7 @@ import net.sf.jsqlparser.expression.operators.relational.LikeExpression;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
 import net.sf.jsqlparser.statement.select.Distinct;
+import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
 import org.bson.Document;
@@ -20,8 +21,10 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static net.sf.jsqlparser.util.validation.metadata.NamedObject.database;
 import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
 import static org.example.server.service.DBMSService.DATABASE_NAME;
+import static org.example.server.service.DBMSService.dbmsRepository;
 
 public class SelectService {
     public static String selectFromTable(Select select) throws Exception {
@@ -42,8 +45,14 @@ public class SelectService {
 
         Expression whereExpression = plainSelect.getWhere();
 
-        String collectionName = DBMSService.dbmsRepository.getCurrentDatabase() + fromTableName;
-        if (whereExpression != null) {
+        String collectionName = dbmsRepository.getCurrentDatabase() + fromTableName;
+
+        if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()) {
+            // Se procesează clauzele JOIN
+            List<Join> joins = plainSelect.getJoins();
+            // processRecursiveJoin(rootDataBases, database, tableNames, joins, selectedColumns);
+            //processRecursiveSortMergeJoin(database,tableNames,attributes,selectedColumns);
+        } else if (whereExpression != null) {
             List<Expression> andExpressionsFromWhereClause = new ArrayList<>(extractAndExpressions(whereExpression));
             List<String> tableColumnsFromWhereClause = new ArrayList<>(getTableColumnsFromExpressions(andExpressionsFromWhereClause));
             Set<String> columns = new HashSet<>(selectedColumns);
@@ -61,6 +70,53 @@ public class SelectService {
         }
         return getStringFromSelectedValues(selectedValues);
     }
+
+//    private static void processRecursiveJoin(Element rootDataBases, MongoDatabase database, List<String> tableNames, List<Join> joins, List<String> selectedColumns) {
+//        if (tableNames.size() >= 2) {
+//            String leftTable = tableNames.get(0);
+//            String rightTable = tableNames.get(1);
+//
+//            MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + leftTable);
+//            MongoCollection<Document> rightCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + rightTable);
+//
+//
+//            List<String> leftPrimaryKeys = getPrimaryKeys(getTableElement(leftTable));
+//            List<String> rightPrimaryKeys = getPrimaryKeys(getTableElement(rightTable));
+//            //System.out.println(leftPrimaryKeys);
+//            //System.out.println(rightPrimaryKeys);
+//
+//            //boolean leftHasKeyIndex = checkIfIndexExists(database, leftTable, leftPrimaryKeys);
+//            //boolean rightHasKeyIndex = checkIfIndexExists(database, rightTable, rightPrimaryKeys);
+//
+//            if (true) {
+//                for (Document leftDoc : leftCollection.find()) {
+//                    for (Document rightDoc : rightCollection.find()) {
+//                        if (leftDoc.get("_id").equals(rightDoc.get("values").toString().split("#")[1])) {
+//                            List<String> remainingTables = new ArrayList<>(tableNames.subList(2, tableNames.size()));
+//                            if (!remainingTables.isEmpty()) {
+//                                List<String> combinedColumns = new ArrayList<>(selectedColumns);
+//                                combinedColumns.addAll(getAttributesForTable(getTableElement(rightTable)));
+//
+//                                processRecursiveJoin(rootDataBases, database, remainingTables, joins.subList(1, joins.size()), combinedColumns);
+//                            } else {
+//                                // Dacă nu mai sunt tabele de procesat, afișăm rezultatul conform coloanelor selectate
+//                                System.out.println(leftDoc);
+//                                System.out.println(rightDoc);
+//                                /*for (String column : selectedColumns) {
+//                                    System.out.print(combinedDoc.get(column) + " ");
+//                                }*/
+//                                System.out.println();
+//                            }
+//                        }
+//                    }
+//                }
+//            } else {
+//                System.out.println("Nu există index pentru cheile primare într-una dintre tabele.");
+//            }
+//        } else {
+//            System.out.println("Sunt necesare cel puțin două tabele pentru JOIN.");
+//        }
+//    }
 
     private static String getStringFromSelectedValues(List<String> selectedValues) {
         StringBuilder selectedValuesString = new StringBuilder(selectedValues.get(0));
