@@ -6,7 +6,7 @@ DROP TABLE Specialization;
 CREATE TABLE IF NOT EXISTS Companies (id int, name varchar(50), address varchar(255), email varchar(50), phone varchar(10));
 CREATE TABLE CUSTOMERS(ID INT NOT NULL, NAME VARCHAR (20) NOT NULL, AGE INT NOT NULL, ADDRESS CHAR (25), SALARY DECIMAL (18, 2), PRIMARY KEY (ID));
 CREATE TABLE Persons ( PersonID int NOT NULL, FirstName varchar(50), LastName varchar(50), PRIMARY KEY (PersonID));
-CREATE TABLE Orders ( OrderID int NOT NULL, OrderNumber int NOT NULL, PersonID int, PRIMARY KEY (OrderID), FOREIGN KEY (PersonID) REFERENCES Persons(ID));
+CREATE TABLE Orders ( OrderID int NOT NULL, OrderNumber int NOT NULL, PersonID int, PRIMARY KEY (OrderID), FOREIGN KEY (PersonID) REFERENCES Persons(PersonID));
 INSERT INTO Orders (OrderID, OrderNumber, PersonID) values (1,1,1)
 CREATE TABLE Orders ( OrderID int NOT NULL, OrderNumber int NOT NULL, PersonID int, PRIMARY KEY (OrderID), FOREIGN KEY (PersonID) REFERENCES Persons(PersonID));
 CREATE INDEX IX_User_Name ON Users (Name, Age);
@@ -58,3 +58,77 @@ DELETE FROM Orders1 WHERE OrderID = 3 AND FirstName = Andrei;
 
 DROP TABLE Persons1;
 DROP TABLE Orders1;
+
+CREATE TABLE Students ( StudID int NOT NULL, GroupID int NOT NULL , Name varchar(50), Tel varchar(50), Email varchar(50), Mark int, PRIMARY KEY (StudID));
+CREATE INDEX Mark ON Students (Mark);
+CREATE INDEX GrupID ON Students (GrupID);
+CREATE INDEX StudID ON Students (StudID);
+CREATE INDEX Email ON Students (Email);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (1, 5, Silviu, 0787778700, silviu@yahoo.com, 5);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (2, 6, Silviu, 0787778700, silviu1@yahoo.com, 6);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (3, 10, Silviu, 0787778700, silviu1@yahoo.com, 7);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (4, 8, Silviu, 0787778700, silviu@yahoo.com, 8);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (5, 9, Silviu, 0787778700, silviu2@yahoo.com, 9);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (6, 5, Silviu, 0787778700, silviu2@yahoo.com, 10);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (7, 1, Silviu, 0787778700, silviu1@yahoo.com, 5);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (8, 10, Silviu, 0787778700, silviu@yahoo.com, 5);
+SELECT * FROM Students WHERE Mark > 7;
+SELECT * FROM Students WHERE Mark > 7 AND GroupID > 7 AND Name LIKE '^Sil';
+SELECT * FROM Students WHERE Mark > 7 AND GroupID > 7 AND StudID < 7;
+SELECT * FROM Students WHERE Mark < 7;
+SELECT * FROM Students WHERE Mark >= 7;
+SELECT * FROM Students WHERE Mark <= 7;
+SELECT * FROM Students WHERE Mark = 5;
+SELECT * FROM Students WHERE Email LIKE '^silviu';
+SELECT * FROM Students WHERE Email LIKE '.com$';
+SELECT * FROM Students WHERE Email LIKE '.*2.*';
+SELECT * FROM Students WHERE Email LIKE 'silviu@yahoo.com';
+SELECT * FROM Students WHERE Mark = 5 AND Name LIKE '^Sil';
+SELECT * FROM Students WHERE Mark = 5 AND GroupID >= 10;
+USE MyDB;
+
+
+CREATE TABLE Students1 ( StudID int NOT NULL, GroupID int NOT NULL , Name varchar(50), Tel varchar(50), Email varchar(50), Mark int, PRIMARY KEY (StudID));
+CREATE INDEX MarkAndName ON Students1 (Mark, Name);
+INSERT INTO Students1 (StudID, GroupID, Name, Tel, Email, Mark) VALUES (1, 5, Silviu, 0787778700, silviu@yahoo.com, 5);
+INSERT INTO Students1 (StudID, GroupID, Name, Tel, Email, Mark) VALUES (2, 6, Silviu, 0787778700, silviu1@yahoo.com, 6);
+INSERT INTO Students1 (StudID, GroupID, Name, Tel, Email, Mark) VALUES (3, 10, Ana, 0787778700, silviu1@yahoo.com, 8);
+INSERT INTO Students1 (StudID, GroupID, Name, Tel, Email, Mark) VALUES (4, 8, Silviu, 0787778700, silviu@yahoo.com, 8);
+
+SELECT Name from Students1 WHERE Mark=8;
+SELECT Name, Email from Students1 WHERE Mark=8 AND Name=Ana;
+
+//Pentru Lab5
+
+CREATE TABLE Persons ( PersonID int NOT NULL, FirstName varchar(50), LastName varchar(50), PRIMARY KEY (PersonID));
+CREATE TABLE Orders ( OrderID int NOT NULL, OrderNumber int NOT NULL, PersonID int, PRIMARY KEY (OrderID), FOREIGN KEY (PersonID) REFERENCES Persons(PersonID));
+SELECT Persons.PersonID, Persons.FirstName, Persons.LastName, Orders.OrderID, Orders.OrderNumber FROM Persons INNER JOIN Orders ON Persons.PersonID = Orders.PersonID;
+
+CREATE TABLE Country ( CountryID int NOT NULL, CountryName varchar(50), CountryCode varchar(50), PRIMARY KEY (CountryID));
+CREATE TABLE City ( CityID int NOT NULL, CountryID int, CityName varchar(50), PRIMARY KEY (CityID), FOREIGN KEY (CountryID) REFERENCES Country(CountryID));
+CREATE TABLE Customer ( CustomerID int NOT NULL, CityID int, CustomerName varchar(50), PRIMARY KEY (CustomerID), FOREIGN KEY (CityID) REFERENCES City(CityID));
+
+INSERT INTO Country (CountryID, CountryName, CountryCode) VALUES (1, Romania, ROU);
+INSERT INTO Country (CountryID, CountryName, CountryCode) VALUES (2, Portugal, PTR);
+INSERT INTO Country (CountryID, CountryName, CountryCode) VALUES (3, Moldova, MDA);
+INSERT INTO Country (CountryID, CountryName, CountryCode) VALUES (4, Belgium, BEL);
+
+INSERT INTO City (CityID, CountryID, CityName) VALUES (1, 1, OrasROU);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (2, 1, OrasROU2);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (3, 2, OrasPTR);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (4, 3, OrasMDA);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (5, 4, OrasBEL);
+INSERT INTO City (CityID, CountryID, CityName) VALUES (6, 4, OrasBEL2);
+
+
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (1, 1, Customer1);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (2, 1, Customer2);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (3, 2, Customer3);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (4, 2, Customer4);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (5, 3, Customer5);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (6, 4, Customer6);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (7, 5, Customer7);
+INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (8, 6, Customer8);
+
+SELECT Country.CountryID, Country.CountryName, Country.CountryCode, City.CityID, City.CityName, Customer.CustomerID, Customer.CustomerName FROM Country INNER JOIN City ON City.CountryID = Country.CountryID INNER JOIN Customer ON Customer.CityID = City.CityID WHERE City.CityName = 'Oras'
+SELECT Country1.CountryID, Country1.CountryName, Country1.CountryCode, City.CityID, City.CityName, Customer.CustomerID, Customer.CustomerName FROM Country1 INNER JOIN City ON City.CountryID = Country1.CountryID INNER JOIN Customer ON Customer.CityID = City.CityID WHERE City.CityName = 'Oras'

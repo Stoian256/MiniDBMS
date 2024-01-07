@@ -36,11 +36,13 @@ import java.util.stream.Collectors;
 import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
 
 public class DBMSService {
-    public static DBMSRepository dbmsRepository;
+    private static DBMSRepository dbmsRepository;
+    private static SelectService selectService;
     private static final String regexCreateDatabase = "CREATE\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexDropDatabase = "DROP\\s+DATABASE\\s+([\\w_]+);";
     private static final String regexUseDatabase = "USE\\s+([\\w_]+);";
-    public static final String DATABASE_NAME = "mini_dbms";
+
+    private static final String DATABASE_NAME = "mini_dbms";
     private static final String DATABASE_NODE = "DataBase";
     private static final String TABLE_NODE = "Table";
     private static final String TABLE_NAME_ATTRIBUTE = "tableName";
@@ -52,29 +54,30 @@ public class DBMSService {
 
     public DBMSService(DBMSRepository dbmsRepository) {
         this.dbmsRepository = dbmsRepository;
+        selectService = new SelectService(dbmsRepository);
     }
 
-    public static String executeCommand(String sqlCommand) throws Exception {
+    public static void executeCommand(String sqlCommand) throws Exception {
         Pattern pattern = Pattern.compile(regexCreateDatabase);
         Matcher matcher = pattern.matcher(sqlCommand);
         if (matcher.find()) {
             String databaseName = matcher.group(1);
             createDatabase(databaseName);
-            return "Server: Operatie executata cu succes";
+            return;
         }
         pattern = Pattern.compile(regexDropDatabase);
         matcher = pattern.matcher(sqlCommand);
         if (matcher.find()) {
             String databaseName = matcher.group(1);
             dropDataBase(databaseName);
-            return "Server: Operatie executata cu succes";
+            return;
         }
         pattern = Pattern.compile(regexUseDatabase);
         matcher = pattern.matcher(sqlCommand);
         if (matcher.find()) {
             String databaseName = matcher.group(1);
             useDataBase(databaseName);
-            return "Server: Operatie executata cu succes";
+            return;
         }
 
         Statement statement = CCJSqlParserUtil.parse(sqlCommand);
@@ -90,11 +93,10 @@ public class DBMSService {
             dropTable(dropTable);
         } else if (statement instanceof CreateIndex createIndex) {
             createIndex(createIndex);
-        } else if (statement instanceof Select select) {
-            return SelectService.selectFromTable(select);
+        } else if (statement instanceof Select selectStatement) {
+            selectService.processSelect(selectStatement);
         } else
             throw new Exception("Eroare parsare comanda");
-        return "Server: Operatie executata cu succes";
     }
 
     public static void update(Update update) throws Exception {
@@ -103,7 +105,7 @@ public class DBMSService {
 
 
         String tableName = update.getTable().getName();
-        Element tableElement = getTableByName(tableName);
+        Element tableElement = validateTableName(tableName);
 
         List<Column> updateColumns = update.getColumns();
         List<Expression> values = update.getExpressions();
@@ -169,7 +171,7 @@ public class DBMSService {
 
 
         String tableName = insert.getTable().getName();
-        Element tableElement = getTableByName(tableName);
+        Element tableElement = validateTableName(tableName);
 
         List<Column> insertColumns = insert.getColumns();
         List<Expression> values = ((ExpressionList) insert.getItemsList()).getExpressions();
@@ -184,7 +186,7 @@ public class DBMSService {
 
         Element indexFiles = tableElement.getChild("IndexFiles");
         Map<String, String> attributeValueMap = computeAttributeValueMap(insertColumns, values);
-        validatePrimaryKeyConstraint(dbmsRepository.getCurrentDatabase() + tableName,keyValueList.get(0));
+        validatePrimaryKeyConstraint(dbmsRepository.getCurrentDatabase() + tableName, keyValueList.get(0));
         processIndexFiles(indexFiles, attributeValueMap, keyValueList.get(0), primaryKeyIndexName);
         saveForeignKeys(foreignKeys, attributeValueMap, tableName, keyValueList.get(0));
         insertInMongoDb(dbmsRepository.getCurrentDatabase() + tableName, keyValueList.get(0), keyValueList.get(1));
@@ -279,6 +281,7 @@ public class DBMSService {
                 .toList();
         return new ForeignKey(refTable, attributes, refAttributes);
     }
+
     private static void insertInMongoDb(String collectionName, String key, String values) throws Exception {
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
@@ -287,6 +290,7 @@ public class DBMSService {
             Document document = new Document("_id", key).append("values", values);
             collection.insertOne(document);
         } catch (Exception e) {
+            System.out.println(e);
             throw new Exception("Primary key constraint violated!");
         }
     }
@@ -398,7 +402,7 @@ public class DBMSService {
         if (dbmsRepository.getCurrentDatabase().equals(""))
             throw new Exception("No database in use!");
         String tableName = delete.getTable().getName();
-        Element tableElement = getTableByName(tableName);
+        Element tableElement = validateTableName(tableName);
         Map<String, String> primaryKeys = extractAttributeValues(delete.getWhere());
         validatePrimaryKey(tableElement, primaryKeys);
         Map<String, List<ForeignKey>> foreignKeys = getForeignKeyFromCatalogByRefTable(tableElement.getParentElement(), tableName);
@@ -408,7 +412,7 @@ public class DBMSService {
         deleteFromMongoDb(tableName, String.join("#", primaryKeys.values()));
     }
 
-    public static List<IndexFile> getIndexFilesForTable(Element tableElement) {
+    private static List<IndexFile> getIndexFilesForTable(Element tableElement) {
         return tableElement.getChild("IndexFiles").getChildren("IndexFile").stream()
                 .map(DBMSService::getIndexFromElement)
                 .toList();
@@ -430,7 +434,7 @@ public class DBMSService {
 
     private static String getRegexForIndex(Map<String, String> primaryKey, List<String> primaryKeysFromIndexAttributes) {
         StringBuilder regex = new StringBuilder();
-        for (Map.Entry<String,String> entry : primaryKey.entrySet()) {
+        for (Map.Entry<String, String> entry : primaryKey.entrySet()) {
             if (primaryKeysFromIndexAttributes.contains(entry.getKey())) {
                 regex.append(entry.getValue()).append("\\$*");
             } else {
@@ -446,7 +450,7 @@ public class DBMSService {
                 .toList();
     }
 
-    public static Element getTableByName(String tableName) throws Exception {
+    private static Element validateTableName(String tableName) throws Exception {
         Element rootDataBases = dbmsRepository.getDoc().getRootElement();
 
         Optional<Element> databaseElement = getDatabaseElement(rootDataBases);
@@ -532,6 +536,7 @@ public class DBMSService {
             }
         }
     }
+
     private static void validatePrimaryKey(Element table, Map<String, String> primaryKeys) throws Exception {
         Set<String> primaryKeysFromDb = getPrimaryKeysFromDb(table);
         if (!primaryKeysFromDb.equals(primaryKeys.keySet())) {
@@ -630,7 +635,7 @@ public class DBMSService {
             String tableName = index.getTable().getName();
             String indexName = dbmsRepository.getCurrentDatabase() + tableName + "Ind" + index.getIndex().getName();
 
-            Element tableElement = getTableByName(tableName);
+            Element tableElement = validateTableName(tableName);
             Element indexFilesElement = validateIndexFiles(tableElement, indexName);
             Element indexFileElement = createIndexFileElement(index, tableElement);
 
@@ -1029,8 +1034,8 @@ public class DBMSService {
                 Object values = document.get("values");
                 List<String> valuesSplit = List.of(((String) values).split("\\$"));
                 String newValue = valuesSplit.stream()
-                            .filter(val -> !val.equals(value))
-                            .collect(Collectors.joining());
+                        .filter(val -> !val.equals(value))
+                        .collect(Collectors.joining());
                 if (newValue.equals("")) {
                     Bson filter = Filters.eq("values", value);
                     DeleteResult result = collection.deleteOne(filter);

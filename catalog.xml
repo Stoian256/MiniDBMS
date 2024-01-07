@@ -1,6 +1,88 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Databases>
   <DataBase dataBaseName="MyDB">
+    <Table tableName="Students" fileName="MyDBStudents">
+      <Structure>
+        <Attribute attributeName="StudID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="GroupID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="Name" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Tel" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Email" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Mark" type="int" length="64" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>StudID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile indexName="MyDBStudentsIndStudID" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>StudID</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+        <IndexFile indexName="MyDBStudentsIndMark" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Mark</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+        <IndexFile indexName="MyDBStudentsIndEmail" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Email</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
+    <Table tableName="Students1" fileName="MyDBStudents1">
+      <Structure>
+        <Attribute attributeName="StudID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="GroupID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="Name" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Tel" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Email" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Mark" type="int" length="64" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>StudID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile indexName="MyDBStudents1IndMarkAndName" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Mark</IAttribute>
+            <IAttribute>Name</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
+    <Table tableName="Students3" fileName="MyDBStudents3">
+      <Structure>
+        <Attribute attributeName="StudID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="GroupID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="Name" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Tel" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Email" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="Mark" type="int" length="64" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>StudID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile indexName="MyDBStudents3IndMark" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Mark</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+        <IndexFile indexName="MyDBStudents3IndEmail" isUnique="0" indexType="BTree">
+          <IndexAttributes>
+            <IAttribute>Email</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
     <Table tableName="Persons" fileName="MyDBPersons">
       <Structure>
         <Attribute attributeName="PersonID" type="int" length="64" isnull="0" />
@@ -12,24 +94,7 @@
       </primaryKey>
       <foreignKeys />
       <uniqueKeys />
-      <IndexFiles>
-        <IndexFile indexName="MyDBPersonsPkIndPersonID" keyLength="64" isUnique="1" indexType="BTree">
-          <IndexAttributes>
-            <IAttribute>PersonID</IAttribute>
-          </IndexAttributes>
-        </IndexFile>
-        <IndexFile indexName="MyDBPersonsIndFirstName" isUnique="0" indexType="BTree">
-          <IndexAttributes>
-            <IAttribute>FirstName</IAttribute>
-          </IndexAttributes>
-        </IndexFile>
-        <IndexFile indexName="MyDBPersonsIndFirstNameLastName" isUnique="1" indexType="BTree">
-          <IndexAttributes>
-            <IAttribute>FirstName</IAttribute>
-            <IAttribute>LastName</IAttribute>
-          </IndexAttributes>
-        </IndexFile>
-      </IndexFiles>
+      <IndexFiles />
     </Table>
     <Table tableName="Orders" fileName="MyDBOrders">
       <Structure>
@@ -51,17 +116,92 @@
       </foreignKeys>
       <uniqueKeys />
       <IndexFiles>
-        <IndexFile indexName="MyDBOrdersPkIndOrderID" keyLength="64" isUnique="1" indexType="BTree">
-          <IndexAttributes>
-            <IAttribute>OrderID</IAttribute>
-          </IndexAttributes>
-        </IndexFile>
         <IndexFile keyLength="64" isUnique="0" indexType="BTree" indexName="MyDBOrdersFkIndPersonIDRefPersons">
           <IndexAttributes>
             <IAttribute>PersonID</IAttribute>
           </IndexAttributes>
         </IndexFile>
       </IndexFiles>
+    </Table>
+    <Table tableName="Country" fileName="MyDBCountry">
+      <Structure>
+        <Attribute attributeName="CountryID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="CountryName" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="CountryCode" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>CountryID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles />
+    </Table>
+    <Table tableName="City" fileName="MyDBCity">
+      <Structure>
+        <Attribute attributeName="CityID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="CountryID" type="int" length="64" isnull="1" />
+        <Attribute attributeName="CityName" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>CityID</pkAttribute>
+      </primaryKey>
+      <foreignKeys>
+        <foreignKey>
+          <fkAttribute>CountryID</fkAttribute>
+          <references>
+            <refTable>Country</refTable>
+            <refAttribute>CountryID</refAttribute>
+          </references>
+        </foreignKey>
+      </foreignKeys>
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile keyLength="64" isUnique="0" indexType="BTree" indexName="MyDBCityFkIndCountryIDRefCountry">
+          <IndexAttributes>
+            <IAttribute>CountryID</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
+    <Table tableName="Customer" fileName="MyDBCustomer">
+      <Structure>
+        <Attribute attributeName="CustomerID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="CityID" type="int" length="64" isnull="1" />
+        <Attribute attributeName="CustomerName" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>CustomerID</pkAttribute>
+      </primaryKey>
+      <foreignKeys>
+        <foreignKey>
+          <fkAttribute>CityID</fkAttribute>
+          <references>
+            <refTable>City</refTable>
+            <refAttribute>CityID</refAttribute>
+          </references>
+        </foreignKey>
+      </foreignKeys>
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile keyLength="64" isUnique="0" indexType="BTree" indexName="MyDBCustomerFkIndCityIDRefCity">
+          <IndexAttributes>
+            <IAttribute>CityID</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
+    <Table tableName="Country1" fileName="MyDBCountry1">
+      <Structure>
+        <Attribute attributeName="CountryID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="CountryName" type="varchar" length="50" isnull="1" />
+        <Attribute attributeName="CountryCode" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>CountryID</pkAttribute>
+      </primaryKey>
+      <foreignKeys />
+      <uniqueKeys />
+      <IndexFiles />
     </Table>
   </DataBase>
 </Databases>
