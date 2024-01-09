@@ -3,9 +3,12 @@ package org.example.server.service;
 
 import com.mongodb.client.*;
 import com.mongodb.client.model.Sorts;
+import net.sf.jsqlparser.expression.BinaryExpression;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
+import net.sf.jsqlparser.expression.operators.conditional.OrExpression;
 import net.sf.jsqlparser.expression.operators.relational.ComparisonOperator;
+import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 import net.sf.jsqlparser.expression.operators.relational.LikeExpression;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.statement.select.Join;
@@ -23,6 +26,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
+import static org.example.server.service.DBMSService.getDatabaseElement;
+import static org.example.server.service.DBMSService.getTableElementByName;
 
 public class SelectService {
     private static DBMSRepository dbmsRepository;
@@ -32,15 +37,18 @@ public class SelectService {
         this.dbmsRepository = dbmsRepository;
     }
 
-    public void processSelect(Select selectStatement) throws Exception {
+    public String processSelect(Select selectStatement) throws Exception {
         Element rootDataBases = dbmsRepository.getDoc().getRootElement();
+        Optional<Element> databaseElement = getDatabaseElement(rootDataBases);
+        if (databaseElement.isEmpty()) {
+            throw new Exception("Invalid database!");
+        }
         MongoClient client = getMongoClient();
         MongoDatabase database = client.getDatabase(DATABASE_NAME);
 
         PlainSelect plainSelect = (PlainSelect) selectStatement.getSelectBody();
 
         List<String> tableNames = extractTableNames(plainSelect);
-        System.out.println(tableNames);
         String tableName = plainSelect.getFromItem().toString(); // Obținem numele tabelei
         Element tableElement = getTableElement(tableName);
         List<String> primaryKeys = getPrimaryKeys(tableElement);
@@ -49,19 +57,18 @@ public class SelectService {
         attributes.removeAll(primaryKeys);
         Expression where = plainSelect.getWhere(); // Obținem clauza WHERE
 
-        // Verificăm dacă interogarea are clauze JOIN
         if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()) {
-            // Se procesează clauzele JOIN
             List<Join> joins = plainSelect.getJoins();
-            //processIndexedNestedJoin(rootDataBases, database, tableNames, joins, selectedColumns);
-            //processRecursiveSortMergeJoin(database, tableNames, attributes, selectedColumns);
-            processHashJoin(database, tableNames, attributes, selectedColumns);
+            validateJoins(databaseElement.get(), joins);
+            // processHashJoin(database, tableNames, attributes, selectedColumns);
+            processIndexedNestedJoin(database, tableNames, joins, selectedColumns);
         } else {
             if (where != null) {
                 List<Expression> conditions = extractConditions(where);
                 processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns);
             }
         }
+        return "";
     }
 
     public static List<String> extractTableNames(PlainSelect plainSelect) {
@@ -82,45 +89,71 @@ public class SelectService {
         return tableNames;
     }
 
-    private void processIndexedNestedJoin(Element rootDataBases, MongoDatabase database, List<String> tableNames, List<Join> joins, List<String> selectedColumns) {
+    private void validateJoins(Element databaseElement, List<Join> joins) throws Exception {
+        for (Join join : joins) {
+            validateJoin(databaseElement, join);
+        }
+    }
+
+    private void validateJoin(Element databaseElement, Join join) throws Exception {
+        Collection<Expression> expressions = join.getOnExpressions();
+        for (Expression expression : expressions) {
+            if (expression instanceof EqualsTo equalsTo) {
+                validateRightTableFromJoin(databaseElement, join.getRightItem().toString());
+                Column leftColum = (Column) equalsTo.getLeftExpression();
+                validateTableNameAndColumn(databaseElement, leftColum.getTable().getName(), leftColum.getColumnName());
+                Column rightColum = (Column) equalsTo.getRightExpression();
+                validateTableNameAndColumn(databaseElement, rightColum.getTable().getName(), rightColum.getColumnName());
+            } else {
+                throw new Exception("Joins must have expressions of equal type");
+            }
+        }
+    }
+
+    private void validateRightTableFromJoin(Element databaseElement, String tableName) throws Exception {
+        Optional<Element> optionalTable =  getTableElementByName(databaseElement, tableName);
+        if (optionalTable.isEmpty()) {
+            throw new Exception("Table not found!");
+        }
+    }
+
+    private void validateTableNameAndColumn(Element databaseElement, String tableName, String column) throws Exception {
+        Optional<Element> optionalTable =  getTableElementByName(databaseElement, tableName);
+        if (optionalTable.isEmpty()) {
+            throw new Exception("Table not found!");
+        }
+        Element attributes = optionalTable.get().getChild("Structure");
+        if (attributes.getChildren().stream()
+                .noneMatch(attr -> attr.getAttribute("attributeName").getValue().equals(column))) {
+            throw new Exception("Invalid attributes in join!");
+        }
+    }
+
+    private void processIndexedNestedJoin(MongoDatabase database, List<String> tableNames, List<Join> joins, List<String> selectedColumns) throws Exception {
         if (tableNames.size() >= 2) {
-            String leftTable = tableNames.get(0);
-            tableNames.remove(0);
-            //System.out.println(leftTable);
-            //System.out.println(rightTable);
+            String leftTableName = tableNames.remove(0);
 
-            MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + leftTable);
-            for (String rightTableName : tableNames) {
+            MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + leftTableName);
+            for (int index = 0; index < tableNames.size(); index++) {
+                String rightTableName = tableNames.get(index);
+                Join currentJoin = joins.get(index);
+
                 List<String> appendResult = new ArrayList<>();
+                List<String> attributesFromJoin = getAttributesFromJoin(currentJoin, rightTableName);
+                String collectionNameForFk = dbmsRepository.getCurrentDatabase() + rightTableName + "FkInd" + String.join("", String.join("", attributesFromJoin) + "Ref" + leftTableName);
 
+                MongoCollection<Document> rightCollection = database.getCollection(collectionNameForFk);
 
-                MongoCollection<Document> rightCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + rightTableName);
-                //System.out.println(leftCollection.find());
-                //System.out.println(rightCollection.find());
-
-                List<String> leftPrimaryKeys = getPrimaryKeys(getTableElement(leftTable));
-                List<String> rightPrimaryKeys = getPrimaryKeys(getTableElement(rightTableName));
-                //System.out.println(leftPrimaryKeys);
-                //System.out.println(rightPrimaryKeys);
-
-                //boolean leftHasKeyIndex = checkIfIndexExists(database, leftTable, leftPrimaryKeys);
-                //boolean rightHasKeyIndex = checkIfIndexExists(database, rightTable, rightPrimaryKeys);
-
-                if (true) {
-                    for (Document leftDoc : leftCollection.find()) {
-                        for (Document rightDoc : rightCollection.find()) {
-                            if (leftDoc.get("_id").equals(rightDoc.get("values").toString().split("#")[0])) {
-                                //List<String> remainingTables = new ArrayList<>(tableNames.subList(2, tableNames.size()));
-
-                                    //List<String> combinedColumns = new ArrayList<>(selectedColumns);
-                                    //combinedColumns.addAll(getAttributesForTable(getTableElement(rightTableName)));
-                                    appendResult.add(leftDoc.toString()+rightDoc);
-
+                String collectionNameForPk = dbmsRepository.getCurrentDatabase() + rightTableName;
+                for (Document leftDoc : leftCollection.find()) {
+                    for (Document rightDoc : rightCollection.find()) {
+                        if (leftDoc.get("_id").equals(rightDoc.get("_id"))) {
+                            List<String> pksForRightTable = Arrays.stream(rightDoc.get("values").toString().split("\\$")).toList();
+                            for (String primaryKey : pksForRightTable) {
+                                appendResult.addAll(getValuesForKey(collectionNameForPk, primaryKey));
                             }
                         }
                     }
-                } else {
-                    System.out.println("Nu există index pentru cheile primare într-una dintre tabele.");
                 }
                 appendResult.forEach(System.out::println);
                 System.out.println();
@@ -128,6 +161,54 @@ public class SelectService {
             }
         } else {
             System.out.println("Sunt necesare cel puțin două tabele pentru JOIN.");
+        }
+    }
+
+    private List<String> getValuesForKey(String collectionName, String key) throws Exception {
+        List<String> values = new ArrayList<>();
+        try (MongoClient client = getMongoClient()) {
+            MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
+            MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
+            Document query = new Document("_id", key);
+            for (Document document : collection.find(query)) {
+                values.add((String) document.get("values"));
+            }
+        } catch (Exception e) {
+            throw new Exception(e.getMessage());
+        }
+        return values;
+    }
+
+    public static List<String> getAttributesFromJoin(Join join, String tableName) {
+        List<String> attributes = new ArrayList<>();
+        Expression onExpression = join.getOnExpression();
+
+        if (onExpression instanceof BinaryExpression binaryExpression) {
+            extractAttributesFromBinaryExpression(binaryExpression, tableName, attributes);
+        }
+
+        return attributes;
+    }
+
+    private static void extractAttributesFromBinaryExpression(BinaryExpression expr, String tableName, List<String> attributes) {
+        if (expr instanceof EqualsTo equalsTo) {
+
+            Expression leftExpression = equalsTo.getLeftExpression();
+            Expression rightExpression = equalsTo.getRightExpression();
+
+            extractAttributeFromColumnExpression(leftExpression, tableName, attributes);
+            extractAttributeFromColumnExpression(rightExpression, tableName, attributes);
+        } else if (expr instanceof OrExpression) {
+            extractAttributesFromBinaryExpression((BinaryExpression) expr.getLeftExpression(), tableName, attributes);
+            extractAttributesFromBinaryExpression((BinaryExpression) expr.getRightExpression(), tableName, attributes);
+        }
+    }
+
+    private static void extractAttributeFromColumnExpression(Expression expression, String tableName, List<String> attributes) {
+        if (expression instanceof Column column) {
+            if (column.getTable().getName().equalsIgnoreCase(tableName)) {
+                attributes.add(column.getColumnName());
+            }
         }
     }
 
