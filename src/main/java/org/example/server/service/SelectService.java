@@ -23,6 +23,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static org.example.server.connectionManager.DbConnectionManager.getMongoClient;
@@ -30,7 +31,7 @@ import static org.example.server.service.DBMSService.getDatabaseElement;
 import static org.example.server.service.DBMSService.getTableElementByName;
 
 public class SelectService {
-    private static DBMSRepository dbmsRepository;
+    private final DBMSRepository dbmsRepository;
     private static final String DATABASE_NAME = "mini_dbms";
 
     public SelectService(DBMSRepository dbmsRepository) {
@@ -57,18 +58,26 @@ public class SelectService {
         attributes.removeAll(primaryKeys);
         Expression where = plainSelect.getWhere(); // Obținem clauza WHERE
 
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        List<String> selectedAttributes = plainSelect.getSelectItems().stream()
+                .map(Object::toString)
+                .toList();
         if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()) {
             List<Join> joins = plainSelect.getJoins();
             validateJoins(databaseElement.get(), joins);
             // processHashJoin(database, tableNames, attributes, selectedColumns);
-            processIndexedNestedJoin(database, tableNames, joins, selectedColumns);
-        } else {
+            processIndexedNestedJoins(result, databaseElement.get(), database, joins);
             if (where != null) {
                 List<Expression> conditions = extractConditions(where);
-                processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns);
+                processConditionsForJoin(result, conditions);
             }
+            projectionForJoin(result, selectedAttributes);
+        } else if (where != null) {
+            List<Expression> conditions = extractConditions(where);
+            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns);
         }
-        return "";
+
+        return result.toString();
     }
 
     public static List<String> extractTableNames(PlainSelect plainSelect) {
@@ -129,54 +138,191 @@ public class SelectService {
         }
     }
 
-    private void processIndexedNestedJoin(MongoDatabase database, List<String> tableNames, List<Join> joins, List<String> selectedColumns) throws Exception {
-        if (tableNames.size() >= 2) {
-            String leftTableName = tableNames.remove(0);
-
-            MongoCollection<Document> leftCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + leftTableName);
-            for (int index = 0; index < tableNames.size(); index++) {
-                String rightTableName = tableNames.get(index);
-                Join currentJoin = joins.get(index);
-
-                List<String> appendResult = new ArrayList<>();
-                List<String> attributesFromJoin = getAttributesFromJoin(currentJoin, rightTableName);
-                String collectionNameForFk = dbmsRepository.getCurrentDatabase() + rightTableName + "FkInd" + String.join("", String.join("", attributesFromJoin) + "Ref" + leftTableName);
-
-                MongoCollection<Document> rightCollection = database.getCollection(collectionNameForFk);
-
-                String collectionNameForPk = dbmsRepository.getCurrentDatabase() + rightTableName;
-                for (Document leftDoc : leftCollection.find()) {
-                    for (Document rightDoc : rightCollection.find()) {
-                        if (leftDoc.get("_id").equals(rightDoc.get("_id"))) {
-                            List<String> pksForRightTable = Arrays.stream(rightDoc.get("values").toString().split("\\$")).toList();
-                            for (String primaryKey : pksForRightTable) {
-                                appendResult.addAll(getValuesForKey(collectionNameForPk, primaryKey));
-                            }
-                        }
-                    }
-                }
-                appendResult.forEach(System.out::println);
-                System.out.println();
-                leftCollection = rightCollection;
-            }
-        } else {
-            System.out.println("Sunt necesare cel puțin două tabele pentru JOIN.");
+    private void processIndexedNestedJoins(Map<String, List<String>> result, Element databaseElement, MongoDatabase database, List<Join> joins) throws Exception {
+        processIndexedNestedJoin(result, databaseElement, database, joins.get(0), true);
+        for (int index = 1; index < joins.size(); index++) {
+            processIndexedNestedJoin(result, databaseElement, database, joins.get(index), false);
         }
     }
 
+    private void processIndexedNestedJoin(Map<String, List<String>> result, Element databaseElement, MongoDatabase database, Join join, boolean isFirstJoin) throws Exception {
+        Expression onExpression = join.getOnExpression();
+        String leftTable = "";
+        String leftAttribute = "";
+        String rightTable = "";
+        String rightAttribute = "";
+
+        if (onExpression instanceof EqualsTo equalsTo) {
+            if (equalsTo.getLeftExpression() instanceof Column column) {
+                leftTable = column.getTable().toString();
+                leftAttribute = column.getColumnName();
+            }
+            if (equalsTo.getRightExpression() instanceof Column column) {
+                rightTable = column.getTable().toString();
+                rightAttribute = column.getColumnName();
+            }
+        }
+
+        if (Objects.equals(leftTable, "") || Objects.equals(leftAttribute, "") || Objects.equals(rightTable, "") || Objects.equals(rightAttribute, "")) {
+            throw new Exception("Invalid JOIN!");
+        }
+
+        String childTable = "";
+        String parentTable = "";
+        if (tableHasForeignKey(databaseElement, leftTable, rightTable, rightAttribute)) {
+            childTable = leftTable;
+            parentTable = rightTable;
+        }
+
+        if (tableHasForeignKey(databaseElement, rightTable, leftTable, leftAttribute)) {
+            childTable = rightTable;
+            parentTable = leftTable;
+        }
+
+        if (isFirstJoin) {
+            processFirstIndexedNestedJoinForFk(result, databaseElement, database, parentTable, childTable, leftAttribute);
+        } else {
+            processIndexedNestedJoinForFk(result, databaseElement, database, parentTable, childTable, leftAttribute);
+        }
+    }
+
+    private void processFirstIndexedNestedJoinForFk(Map<String, List<String>> result, Element databaseElement, MongoDatabase database, String parentTable, String childTable, String attribute) throws Exception {
+        String collectionNameForFk = dbmsRepository.getCurrentDatabase() + childTable + "FkInd" + attribute + "Ref" + parentTable;
+        MongoCollection<Document> fkCollection = database.getCollection(collectionNameForFk);
+
+        String collectionNameForChildTable = dbmsRepository.getCurrentDatabase() + childTable;
+        MongoCollection<Document> parentTableCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + parentTable);
+
+        List<String> attributesForParentTable = getAttributesForTable(databaseElement, parentTable);
+        List<String> attributesForChildTable = getAttributesForTable(databaseElement, childTable);
+
+        for (Document parentDoc : parentTableCollection.find()) {
+            for (Document fkDoc : fkCollection.find()) {
+                if (parentDoc.get("_id").equals(fkDoc.get("_id"))) {
+                    List<String> pksForChildTable = Arrays.stream(fkDoc.get("values").toString().split("\\$")).toList();
+                    List<String> valuesForParentTable = new ArrayList<>(Arrays.stream(parentDoc.get("values").toString().split("#")).toList());
+                    valuesForParentTable.add(0, parentDoc.get("_id").toString());
+                    for (String primaryKey : pksForChildTable) {
+                        List<String> valuesForTable = new ArrayList<>(getValuesForKey(collectionNameForChildTable, primaryKey));
+                        valuesForTable.add(0, primaryKey);
+                        addNewValueToResult(result, parentTable, childTable, attribute, attributesForParentTable, attributesForChildTable, valuesForParentTable, valuesForTable);
+                    }
+                }
+            }
+        }
+    }
+
+    private void addNewValueToResult(Map<String, List<String>> result,
+                                     String parentTable,
+                                     String childTable,
+                                     String attribute,
+                                     List<String> attributesForParentTable,
+                                     List<String> attributesForChildTable,
+                                     List<String> valuesForParentTable,
+                                     List<String> valuesForChildTable) {
+
+        for (int index = 0; index < attributesForParentTable.size(); index++) {
+            String attributeForParentTable = attributesForParentTable.get(index);
+            if (attributeForParentTable.equals(attribute)) {
+                result.computeIfAbsent(attributeForParentTable, k -> new ArrayList<>()).add(valuesForParentTable.get(index));
+            } else {
+                result.computeIfAbsent(parentTable + "." + attributeForParentTable, k -> new ArrayList<>()).add(valuesForParentTable.get(index));
+            }
+        }
+
+        for (int index = 1; index < attributesForChildTable.size(); index++) {
+            String attributeForChildTable = attributesForChildTable.get(index);
+            if (!attributeForChildTable.equals(attribute)) {
+                result.computeIfAbsent(childTable + "." + attributesForChildTable.get(index), k -> new ArrayList<>()).add(valuesForChildTable.get(index));
+            }
+        }
+
+        result.computeIfAbsent(attributesForChildTable.get(0), k -> new ArrayList<>()).add(valuesForChildTable.get(0));
+    }
+
+    private void processIndexedNestedJoinForFk(Map<String, List<String>> result, Element databaseElement, MongoDatabase database, String parentTable, String childTable, String attribute) throws Exception {
+        String collectionNameForFk = dbmsRepository.getCurrentDatabase() + childTable + "FkInd" + attribute + "Ref" + parentTable;
+        MongoCollection<Document> fkCollection = database.getCollection(collectionNameForFk);
+
+        String collectionNameForChildTable = dbmsRepository.getCurrentDatabase() + childTable;
+        List<String> attributesForChildTable = getAttributesForTable(databaseElement, childTable);
+
+        Map<String, List<String>> tempResult = new HashMap<>();
+        List<String> valueForPkFromResult = result.get(attribute);
+
+        for (int index = 0; index < valueForPkFromResult.size(); index++) {
+            for (Document fkDoc : fkCollection.find()) {
+                if (valueForPkFromResult.get(index).equals(fkDoc.get("_id"))) {
+                    List<String> pksForChildTable = Arrays.stream(fkDoc.get("values").toString().split("\\$")).toList();
+                    for (String primaryKey : pksForChildTable) {
+                        List<String> valuesForTable = new ArrayList<>(getValuesForKey(collectionNameForChildTable, primaryKey));
+                        valuesForTable.add(0, primaryKey);
+                        addNewValueToTempResult(result, tempResult, index, childTable, attributesForChildTable, valuesForTable);
+                    }
+                }
+            }
+        }
+        result.clear();
+        result.putAll(tempResult);
+    }
+
+    private void addNewValueToTempResult(Map<String, List<String>> result,
+                                         Map<String, List<String>> tempResult,
+                                         int indexForKey,
+                                         String childTable,
+                                         List<String> attributesForChildTable,
+                                         List<String> valuesForChildTable) {
+
+
+        for (Map.Entry<String, List<String>> entry : result.entrySet()) {
+            tempResult.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).add(entry.getValue().get(indexForKey));
+        }
+        tempResult.computeIfAbsent(attributesForChildTable.get(0), k -> new ArrayList<>()).add(valuesForChildTable.get(0));
+
+        for (int index = 0; index < attributesForChildTable.size(); index++) {
+            tempResult.computeIfAbsent(childTable + "." + attributesForChildTable.get(index), k -> new ArrayList<>()).add(valuesForChildTable.get(index));
+        }
+    }
+
+    private List<String> getAttributesForTable(Element databaseElement, String tableName) throws Exception {
+        Optional<Element> optionalTable =  getTableElementByName(databaseElement, tableName);
+        if (optionalTable.isEmpty()) {
+            throw new Exception("Table not found!");
+        }
+
+        return optionalTable.get().getChild("Structure")
+                .getChildren("Attribute")
+                .stream().map(attr -> attr.getAttribute("attributeName").getValue())
+                .toList();
+    }
+
+    private boolean tableHasForeignKey(Element databaseElement, String childTable, String parentTable, String fkAttribute) throws Exception {
+        Optional<Element> childTableElement = getTableElementByName(databaseElement, childTable);
+        if (childTableElement.isEmpty()) {
+            throw new Exception("Invalid table!");
+        }
+        for (Element fkElement : childTableElement.get().getChild("foreignKeys").getChildren("foreignKey")) {
+            Element refElement = fkElement.getChild("references");
+            if (refElement.getChild("refTable").getText().equals(parentTable) && refElement.getChild("refAttribute").getText().equals(fkAttribute)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private List<String> getValuesForKey(String collectionName, String key) throws Exception {
-        List<String> values = new ArrayList<>();
+        String values = "";
         try (MongoClient client = getMongoClient()) {
             MongoDatabase mongoDatabase = client.getDatabase(DATABASE_NAME);
             MongoCollection<Document> collection = mongoDatabase.getCollection(collectionName);
             Document query = new Document("_id", key);
             for (Document document : collection.find(query)) {
-                values.add((String) document.get("values"));
+                values = (String) document.get("values");
             }
         } catch (Exception e) {
             throw new Exception(e.getMessage());
         }
-        return values;
+        return List.of(values.split("#"));
     }
 
     public static List<String> getAttributesFromJoin(Join join, String tableName) {
@@ -393,6 +539,41 @@ public class SelectService {
         return conditions;
     }
 
+    private void processConditionsForJoin(Map<String, List<String>> result, List<Expression> conditions) throws Exception {
+        Column column;
+        String conditionValue;
+        String attribute;
+
+        for (Expression condition : conditions) {
+            if (condition instanceof ComparisonOperator comparisonOperator) {
+                column = (Column) comparisonOperator.getLeftExpression();
+                attribute = column.getTable() + "." + column.getColumnName();
+                conditionValue = comparisonOperator.getRightExpression().toString();
+                filterResult(result, attribute, conditionValue);
+            }
+        }
+    }
+
+    private void filterResult(Map<String, List<String>> result, String attribute, String conditionValue) {
+        for (Map.Entry<String, List<String>> entry : result.entrySet()) {
+            if (entry.getKey().equals(attribute)) {
+                List<Integer> indexes = IntStream.range(0, entry.getValue().size())
+                        .filter(i -> !entry.getValue().get(i).equals(conditionValue))
+                        .boxed()
+                        .sorted(Comparator.reverseOrder())
+                        .toList();
+
+                for (Map.Entry<String, List<String>> entry2 : result.entrySet()) {
+                    indexes.forEach(index -> entry2.getValue().remove(index.intValue()));
+                }
+            }
+        }
+    }
+
+    private void projectionForJoin(Map<String, List<String>> result, List<String> attributes) {
+        result.entrySet().removeIf(entry -> !attributes.contains(entry.getKey()));
+    }
+
     private void processConditions(Element rootDataBases, MongoDatabase database, String tableName, List<Expression> conditions, List<String> attributes, List<String> primaryKeys, List<String> selectedColumns) throws Exception {
         List<String> allMatchingIDs = new ArrayList<>();
         List<Expression> whereNoIndex = new ArrayList<>();
@@ -530,7 +711,7 @@ public class SelectService {
                 .toList();
     }
 
-    private static Element getTableElement(String tableName) {
+    private Element getTableElement(String tableName) {
         Element rootDataBases = dbmsRepository.getDoc().getRootElement().getChild("DataBase");
         List<Element> tables = rootDataBases.getChildren("Table");
         for (Element table : tables) {
