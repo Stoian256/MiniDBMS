@@ -163,33 +163,6 @@
         </IndexFile>
       </IndexFiles>
     </Table>
-    <Table tableName="Customer" fileName="MyDBCustomer">
-      <Structure>
-        <Attribute attributeName="CustomerID" type="int" length="64" isnull="0" />
-        <Attribute attributeName="CityID" type="int" length="64" isnull="1" />
-        <Attribute attributeName="CustomerName" type="varchar" length="50" isnull="1" />
-      </Structure>
-      <primaryKey>
-        <pkAttribute>CustomerID</pkAttribute>
-      </primaryKey>
-      <foreignKeys>
-        <foreignKey>
-          <fkAttribute>CityID</fkAttribute>
-          <references>
-            <refTable>City</refTable>
-            <refAttribute>CityID</refAttribute>
-          </references>
-        </foreignKey>
-      </foreignKeys>
-      <uniqueKeys />
-      <IndexFiles>
-        <IndexFile keyLength="64" isUnique="0" indexType="BTree" indexName="MyDBCustomerFkIndCityIDRefCity">
-          <IndexAttributes>
-            <IAttribute>CityID</IAttribute>
-          </IndexAttributes>
-        </IndexFile>
-      </IndexFiles>
-    </Table>
     <Table tableName="Country1" fileName="MyDBCountry1">
       <Structure>
         <Attribute attributeName="CountryID" type="int" length="64" isnull="0" />
@@ -202,6 +175,60 @@
       <foreignKeys />
       <uniqueKeys />
       <IndexFiles />
+    </Table>
+    <Table tableName="City1" fileName="MyDBCity1">
+      <Structure>
+        <Attribute attributeName="CityID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="CountryID" type="int" length="64" isnull="1" />
+        <Attribute attributeName="CityName" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>CityID</pkAttribute>
+      </primaryKey>
+      <foreignKeys>
+        <foreignKey>
+          <fkAttribute>CountryID</fkAttribute>
+          <references>
+            <refTable>Country1</refTable>
+            <refAttribute>CountryID</refAttribute>
+          </references>
+        </foreignKey>
+      </foreignKeys>
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile keyLength="64" isUnique="0" indexType="BTree" indexName="MyDBCity1FkIndCountryIDRefCountry1">
+          <IndexAttributes>
+            <IAttribute>CountryID</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
+    </Table>
+    <Table tableName="Customer1" fileName="MyDBCustomer1">
+      <Structure>
+        <Attribute attributeName="CustomerID" type="int" length="64" isnull="0" />
+        <Attribute attributeName="CityID" type="int" length="64" isnull="1" />
+        <Attribute attributeName="CustomerName" type="varchar" length="50" isnull="1" />
+      </Structure>
+      <primaryKey>
+        <pkAttribute>CustomerID</pkAttribute>
+      </primaryKey>
+      <foreignKeys>
+        <foreignKey>
+          <fkAttribute>CityID</fkAttribute>
+          <references>
+            <refTable>City1</refTable>
+            <refAttribute>CityID</refAttribute>
+          </references>
+        </foreignKey>
+      </foreignKeys>
+      <uniqueKeys />
+      <IndexFiles>
+        <IndexFile keyLength="64" isUnique="0" indexType="BTree" indexName="MyDBCustomer1FkIndCityIDRefCity1">
+          <IndexAttributes>
+            <IAttribute>CityID</IAttribute>
+          </IndexAttributes>
+        </IndexFile>
+      </IndexFiles>
     </Table>
   </DataBase>
 </Databases>

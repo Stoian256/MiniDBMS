@@ -11,6 +11,7 @@ import net.sf.jsqlparser.expression.operators.relational.ComparisonOperator;
 import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
 import net.sf.jsqlparser.expression.operators.relational.LikeExpression;
 import net.sf.jsqlparser.schema.Column;
+import net.sf.jsqlparser.statement.select.GroupByElement;
 import net.sf.jsqlparser.statement.select.Join;
 import net.sf.jsqlparser.statement.select.PlainSelect;
 import net.sf.jsqlparser.statement.select.Select;
@@ -58,6 +59,9 @@ public class SelectService {
         attributes.removeAll(primaryKeys);
         Expression where = plainSelect.getWhere(); // Obținem clauza WHERE
 
+        GroupByElement groupBy = plainSelect.getGroupBy();
+
+
         Map<String, List<String>> result = new LinkedHashMap<>();
         List<String> selectedAttributes = plainSelect.getSelectItems().stream()
                 .map(Object::toString)
@@ -74,10 +78,37 @@ public class SelectService {
             projectionForJoin(result, selectedAttributes);
         } else if (where != null) {
             List<Expression> conditions = extractConditions(where);
-            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns);
+            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns, groupBy);
+        } else {
+            List<Expression> conditions = new ArrayList<>();
+            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns, groupBy);
+        }
+        if (groupBy != null) {
+            List<String> groupByColumnNames = plainSelect.getGroupBy().getGroupByExpressionList().getExpressions().stream().map(Objects::toString).collect(Collectors.toList());
+            for (String key : result.keySet()) {
+                // Verifică dacă cheia este una dintre coloanele GROUP BY
+
+                System.out.println(key.split("\\.")[1]);
+                if (groupByColumnNames.contains(key.split("\\.")[1])) {
+                    // Obține lista originală de valori pentru cheia respectivă
+                    List<String> originalValues = result.get(key);
+
+                    // Creează o listă nouă pentru valorile distincte
+                    List<String> distinctValues = getDistinctValues(originalValues);
+
+                    // Actualizează rezultatul cu lista distinctă
+                    result.put(key, distinctValues);
+                }
+            }
         }
 
+
         return result.toString();
+    }
+
+    private static List<String> getDistinctValues(List<String> values) {
+        Set<String> distinctSet = new HashSet<>(values);
+        return new ArrayList<>(distinctSet);
     }
 
     public static List<String> extractTableNames(PlainSelect plainSelect) {
@@ -120,14 +151,14 @@ public class SelectService {
     }
 
     private void validateRightTableFromJoin(Element databaseElement, String tableName) throws Exception {
-        Optional<Element> optionalTable =  getTableElementByName(databaseElement, tableName);
+        Optional<Element> optionalTable = getTableElementByName(databaseElement, tableName);
         if (optionalTable.isEmpty()) {
             throw new Exception("Table not found!");
         }
     }
 
     private void validateTableNameAndColumn(Element databaseElement, String tableName, String column) throws Exception {
-        Optional<Element> optionalTable =  getTableElementByName(databaseElement, tableName);
+        Optional<Element> optionalTable = getTableElementByName(databaseElement, tableName);
         if (optionalTable.isEmpty()) {
             throw new Exception("Table not found!");
         }
@@ -285,8 +316,9 @@ public class SelectService {
     }
 
     private List<String> getAttributesForTable(Element databaseElement, String tableName) throws Exception {
-        Optional<Element> optionalTable =  getTableElementByName(databaseElement, tableName);
+        Optional<Element> optionalTable = getTableElementByName(databaseElement, tableName);
         if (optionalTable.isEmpty()) {
+            System.out.println(tableName);
             throw new Exception("Table not found!");
         }
 
@@ -574,7 +606,7 @@ public class SelectService {
         result.entrySet().removeIf(entry -> !attributes.contains(entry.getKey()));
     }
 
-    private void processConditions(Element rootDataBases, MongoDatabase database, String tableName, List<Expression> conditions, List<String> attributes, List<String> primaryKeys, List<String> selectedColumns) throws Exception {
+    private void processConditions(Element rootDataBases, MongoDatabase database, String tableName, List<Expression> conditions, List<String> attributes, List<String> primaryKeys, List<String> selectedColumns, GroupByElement groupBy) throws Exception {
         List<String> allMatchingIDs = new ArrayList<>();
         List<Expression> whereNoIndex = new ArrayList<>();
 
@@ -590,6 +622,9 @@ public class SelectService {
             }
         }
 
+        List<String> groupByColumns = groupBy!= null ? groupBy.getGroupByExpressionList().getExpressions().stream().map(Objects::toString).collect(Collectors.toList()) : new ArrayList<>();
+
+
         if (!allMatchingIDs.isEmpty()) {
             MongoCollection<Document> studentsCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
             List<Document> result = retrieveEntities(studentsCollection, allMatchingIDs);
@@ -600,27 +635,102 @@ public class SelectService {
                 selectedColumns.addAll(primaryKeys);
                 selectedColumns.addAll(attributes);
             }
+            Map<String, List<Document>> groupedResult = groupByColumns.isEmpty() ? null : groupByResult(result, groupByColumns,attributes);
 
             selectedColumns.forEach(column -> System.out.print(column + " "));
-            System.out.println();
+            String countColumn = selectedColumns.stream()
+                    .filter(element -> element.contains("COUNT"))
+                    .findFirst().map(el -> el.substring(el.indexOf("(")+1, el.indexOf(")")))
+                    .orElse("");
 
-            result.forEach(document -> {
-                selectedColumns.forEach(
-                        selectedColumn -> {
-                            Integer keyPosition = primaryKeys.indexOf(selectedColumn);
-                            Integer valuePosition = attributes.indexOf(selectedColumn);
-                            if (keyPosition != -1) {
-                                System.out.print(document.getString("_id").split("$")[keyPosition] + " ");
-                            } else if (valuePosition != -1) {
-                                System.out.print(document.getString("values").split("#")[valuePosition] + " ");
+            String minColumn = selectedColumns.stream()
+                    .filter(element -> element.contains("MIN"))
+                    .findFirst().map(el -> el.substring(el.indexOf("(")+1, el.indexOf(")")))
+                    .orElse("");
+
+            String maxColumn = selectedColumns.stream()
+                    .filter(element -> element.contains("MAX"))
+                    .findFirst().map(el -> el.substring(el.indexOf("(")+1, el.indexOf(")")))
+                    .orElse("");
+            String sumColumn = selectedColumns.stream()
+                    .filter(element -> element.contains("SUM"))
+                    .findFirst().map(el -> el.substring(el.indexOf("(")+1, el.indexOf(")")))
+                    .orElse("");
+
+            String averageColumn = selectedColumns.stream()
+                    .filter(element -> element.contains("AVG"))
+                    .findFirst().map(el -> el.substring(el.indexOf("(")+1, el.indexOf(")")))
+                    .orElse("");
+
+            System.out.println();
+            if (groupedResult != null) {
+                groupedResult.forEach((group, groupDocuments) -> {
+                    if(countColumn!="") System.out.print(groupDocuments.size()+"  ");
+                    if (minColumn!=""){
+                        System.out.print(groupDocuments.stream().map(document -> {
+                                Integer valuePosition = attributes.indexOf(minColumn);
+                                return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
+                            }).min(Integer::compareTo).get()+"    ");
+                    }
+                    if (maxColumn!=""){
+                        System.out.print(groupDocuments.stream().map(document -> {
+                            Integer valuePosition = attributes.indexOf(maxColumn);
+                            return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
+                        }).max(Integer::compareTo).get()+"    ");
+                    }
+                    if (sumColumn!=""){
+                        System.out.print(groupDocuments.stream().map(document -> {
+                            Integer valuePosition = attributes.indexOf(sumColumn);
+                            return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
+                        }).reduce(0, Integer::sum)+"    ");
+                    }
+                    if (averageColumn!=""){
+                        System.out.print(groupDocuments.stream().map(document -> {
+                            Integer valuePosition = attributes.indexOf(averageColumn);
+                            return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
+                        }).mapToDouble(Integer::doubleValue).average().getAsDouble()+"    ");
+                    }
+
+                    System.out.println(group);
+
+                });
+            } else {
+                result.forEach(document -> {
+                    selectedColumns.forEach(
+                            selectedColumn -> {
+                                Integer keyPosition = primaryKeys.indexOf(selectedColumn);
+                                Integer valuePosition = attributes.indexOf(selectedColumn);
+                                if (keyPosition != -1) {
+                                    System.out.print(document.getString("_id").split("$")[keyPosition] + " ");
+                                } else if (valuePosition != -1) {
+                                    System.out.print(document.getString("values").split("#")[valuePosition] + " ");
+                                }
                             }
-                        }
-                );
-                System.out.println();
-            });
+                    );
+                    System.out.println();
+                });
+            }
+
         } else {
             System.out.println("Nu au fost găsite înregistrări care să satisfacă toate condițiile.");
         }
+    }
+
+    private Map<String, List<Document>> groupByResult(List<Document> result, List<String> groupByColumns,List<String> attributes) {
+        Map<String, List<Document>> groupedResult = new HashMap<>();
+
+
+        for (Document document : result) {
+            StringBuilder groupKey = new StringBuilder();
+            for (String groupByColumn : groupByColumns) {
+                Integer valuePosition = attributes.indexOf(groupByColumn);
+                groupKey.append(document.getString("values").split("#")[valuePosition]);
+            }
+
+            groupedResult.computeIfAbsent(groupKey.toString(), k -> new ArrayList<>()).add(document);
+        }
+
+        return groupedResult;
     }
 
     private List<Document> computeInMemoryFilters(List<Document> result, List<String> attributes, List<Expression> whereNoIndex) {

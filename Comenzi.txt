@@ -132,3 +132,25 @@ INSERT INTO Customer (CustomerID, CityID, CustomerName) VALUES (8, 6, Customer8)
 
 SELECT Country.CountryID, Country.CountryName, Country.CountryCode, City.CityID, City.CityName, Customer.CustomerID, Customer.CustomerName FROM Country INNER JOIN City ON City.CountryID = Country.CountryID INNER JOIN Customer ON Customer.CityID = City.CityID WHERE City.CityName = 'Oras'
 SELECT Country1.CountryID, Country1.CountryName, Country1.CountryCode, City.CityID, City.CityName, Customer.CustomerID, Customer.CustomerName FROM Country1 INNER JOIN City ON City.CountryID = Country1.CountryID INNER JOIN Customer ON Customer.CityID = City.CityID WHERE City.CityName = 'Oras'
+
+SELECT Country1.CountryName, Country1.CountryCode, City1.CityID, Customer1.CustomerName FROM Country1 INNER JOIN City1 ON City1.CountryID = Country1.CountryID INNER JOIN Customer1 ON Customer1.CityID = City1.CityID WHERE City1.CityName = OrasROU
+SELECT Country1.CountryCode, Country1.CountryName FROM Country1 INNER JOIN City1 ON City1.CountryID = Country1.CountryID INNER JOIN Customer1 ON Customer1.CityID = City1.CityID WHERE City1.CityName = OrasROU GROUP BY CountryName, CountryCode
+________
+LAB 6
+
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (3, 10, Alin, 0787778700, silviu1@yahoo.com, 7);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (4, 8, Alin, 0787778700, silviu@yahoo.com, 8);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (5, 9, Silviu, 0787778700, silviu@yahoo.com, 9);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (6, 5, Silviu, 0787778700, silviu2@yahoo.com, 10);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (9, 5, Ana, 0752, ana@yahoo.com, 9);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (10, 5, Ana, 0752, ana@yahoo.com, 8);
+INSERT INTO Students (StudID, GroupID, Name, Tel, Email, Mark) VALUES (11, 5, Ana, 0752, ana@yahoo.com, 10);
+
+SELECT * FROM Students WHERE Mark >= 7;
+SELECT Tel FROM Students WHERE Mark >= 7 GROUP BY Tel;
+SELECT COUNT(StudID), Tel FROM Students WHERE Mark >= 7 GROUP BY Tel;
+SELECT COUNT(StudID), Name FROM Students WHERE Mark >= 7 GROUP BY Name;
+SELECT MIN(Mark), Name FROM Students WHERE Mark >= 7 GROUP BY Name;
+SELECT MAX(Mark), Name FROM Students WHERE Mark >= 7 GROUP BY Name;
+SELECT SUM(Mark), Name FROM Students WHERE Mark >= 7 GROUP BY Name;
+SELECT AVG(Mark), Name FROM Students WHERE Mark >= 7 GROUP BY Name;
