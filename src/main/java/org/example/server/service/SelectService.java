@@ -62,11 +62,12 @@ public class SelectService {
         GroupByElement groupBy = plainSelect.getGroupBy();
 
 
-        Map<String, List<String>> result = new LinkedHashMap<>();
         List<String> selectedAttributes = plainSelect.getSelectItems().stream()
                 .map(Object::toString)
                 .toList();
+        String resultValue = "";
         if (plainSelect.getJoins() != null && !plainSelect.getJoins().isEmpty()) {
+            Map<String, List<String>> result = new LinkedHashMap<>();
             List<Join> joins = plainSelect.getJoins();
             validateJoins(databaseElement.get(), joins);
             // processHashJoin(database, tableNames, attributes, selectedColumns);
@@ -76,34 +77,16 @@ public class SelectService {
                 processConditionsForJoin(result, conditions);
             }
             projectionForJoin(result, selectedAttributes);
+            resultValue = result.toString();
         } else if (where != null) {
             List<Expression> conditions = extractConditions(where);
-            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns, groupBy);
+            resultValue = processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns, groupBy);
         } else {
             List<Expression> conditions = new ArrayList<>();
-            processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns, groupBy);
-        }
-        if (groupBy != null) {
-            List<String> groupByColumnNames = plainSelect.getGroupBy().getGroupByExpressionList().getExpressions().stream().map(Objects::toString).collect(Collectors.toList());
-            for (String key : result.keySet()) {
-                // Verifică dacă cheia este una dintre coloanele GROUP BY
-
-                System.out.println(key.split("\\.")[1]);
-                if (groupByColumnNames.contains(key.split("\\.")[1])) {
-                    // Obține lista originală de valori pentru cheia respectivă
-                    List<String> originalValues = result.get(key);
-
-                    // Creează o listă nouă pentru valorile distincte
-                    List<String> distinctValues = getDistinctValues(originalValues);
-
-                    // Actualizează rezultatul cu lista distinctă
-                    result.put(key, distinctValues);
-                }
-            }
+            resultValue = processConditions(rootDataBases, database, tableName, conditions, attributes, primaryKeys, selectedColumns, groupBy);
         }
 
-
-        return result.toString();
+        return resultValue;
     }
 
     private static List<String> getDistinctValues(List<String> values) {
@@ -606,7 +589,9 @@ public class SelectService {
         result.entrySet().removeIf(entry -> !attributes.contains(entry.getKey()));
     }
 
-    private void processConditions(Element rootDataBases, MongoDatabase database, String tableName, List<Expression> conditions, List<String> attributes, List<String> primaryKeys, List<String> selectedColumns, GroupByElement groupBy) throws Exception {
+    private String processConditions(Element rootDataBases, MongoDatabase database, String tableName, List<Expression> conditions, List<String> attributes, List<String> primaryKeys, List<String> selectedColumns, GroupByElement groupBy) throws Exception {
+        StringBuilder resultValue = new StringBuilder();
+
         List<String> allMatchingIDs = new ArrayList<>();
         List<Expression> whereNoIndex = new ArrayList<>();
 
@@ -622,12 +607,14 @@ public class SelectService {
             }
         }
 
-        List<String> groupByColumns = groupBy!= null ? groupBy.getGroupByExpressionList().getExpressions().stream().map(Objects::toString).collect(Collectors.toList()) : new ArrayList<>();
+        List<String> groupByColumns = groupBy!= null ? groupBy.getGroupByExpressionList().getExpressions().stream()
+                .map(Objects::toString)
+                .collect(Collectors.toList()) : new ArrayList<>();
 
 
         if (!allMatchingIDs.isEmpty()) {
-            MongoCollection<Document> studentsCollection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
-            List<Document> result = retrieveEntities(studentsCollection, allMatchingIDs);
+            MongoCollection<Document> collection = database.getCollection(dbmsRepository.getCurrentDatabase() + tableName);
+            List<Document> result = retrieveEntities(collection, allMatchingIDs);
             result = computeInMemoryFilters(result, attributes, whereNoIndex);
 
             if (selectedColumns.contains("*")) {
@@ -637,7 +624,8 @@ public class SelectService {
             }
             Map<String, List<Document>> groupedResult = groupByColumns.isEmpty() ? null : groupByResult(result, groupByColumns,attributes);
 
-            selectedColumns.forEach(column -> System.out.print(column + " "));
+            selectedColumns.forEach(column -> resultValue.append(column).append(" "));
+            resultValue.append("|");
             String countColumn = selectedColumns.stream()
                     .filter(element -> element.contains("COUNT"))
                     .findFirst().map(el -> el.substring(el.indexOf("(")+1, el.indexOf(")")))
@@ -662,36 +650,37 @@ public class SelectService {
                     .findFirst().map(el -> el.substring(el.indexOf("(")+1, el.indexOf(")")))
                     .orElse("");
 
-            System.out.println();
             if (groupedResult != null) {
                 groupedResult.forEach((group, groupDocuments) -> {
-                    if(countColumn!="") System.out.print(groupDocuments.size()+"  ");
+                    if(countColumn!="") {
+                        resultValue.append(groupDocuments.size()+"  ");
+                    }
                     if (minColumn!=""){
-                        System.out.print(groupDocuments.stream().map(document -> {
-                                Integer valuePosition = attributes.indexOf(minColumn);
-                                return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
-                            }).min(Integer::compareTo).get()+"    ");
+                        resultValue.append(groupDocuments.stream().map(document -> {
+                            Integer valuePosition = attributes.indexOf(minColumn);
+                            return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
+                        }).min(Integer::compareTo).get()).append("    ");
                     }
                     if (maxColumn!=""){
-                        System.out.print(groupDocuments.stream().map(document -> {
+                        resultValue.append(groupDocuments.stream().map(document -> {
                             Integer valuePosition = attributes.indexOf(maxColumn);
                             return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
-                        }).max(Integer::compareTo).get()+"    ");
+                        }).max(Integer::compareTo).get()).append("    ");
                     }
                     if (sumColumn!=""){
-                        System.out.print(groupDocuments.stream().map(document -> {
+                        resultValue.append(groupDocuments.stream().map(document -> {
                             Integer valuePosition = attributes.indexOf(sumColumn);
                             return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
-                        }).reduce(0, Integer::sum)+"    ");
+                        }).reduce(0, Integer::sum)).append("    ");
                     }
                     if (averageColumn!=""){
-                        System.out.print(groupDocuments.stream().map(document -> {
+                        resultValue.append(groupDocuments.stream().map(document -> {
                             Integer valuePosition = attributes.indexOf(averageColumn);
                             return Integer.parseInt(document.getString("values").split("#")[valuePosition]);
-                        }).mapToDouble(Integer::doubleValue).average().getAsDouble()+"    ");
+                        }).mapToDouble(Integer::doubleValue).average().getAsDouble()).append("    ");
                     }
 
-                    System.out.println(group);
+                    resultValue.append(group).append("|");
 
                 });
             } else {
@@ -701,19 +690,20 @@ public class SelectService {
                                 Integer keyPosition = primaryKeys.indexOf(selectedColumn);
                                 Integer valuePosition = attributes.indexOf(selectedColumn);
                                 if (keyPosition != -1) {
-                                    System.out.print(document.getString("_id").split("$")[keyPosition] + " ");
+                                    resultValue.append(document.getString("_id").split("$")[keyPosition]).append(" ");
                                 } else if (valuePosition != -1) {
-                                    System.out.print(document.getString("values").split("#")[valuePosition] + " ");
+                                    resultValue.append(document.getString("values").split("#")[valuePosition]).append(" ");
                                 }
                             }
                     );
-                    System.out.println();
+                    resultValue.append("|");
                 });
             }
 
         } else {
             System.out.println("Nu au fost găsite înregistrări care să satisfacă toate condițiile.");
         }
+        return resultValue.toString();
     }
 
     private Map<String, List<Document>> groupByResult(List<Document> result, List<String> groupByColumns,List<String> attributes) {
@@ -933,11 +923,11 @@ public class SelectService {
         return matchingIDs;
     }
 
-    private static List<Document> retrieveEntities(MongoCollection<Document> studentsCollection, List<String> matchingIDs) {
+    private static List<Document> retrieveEntities(MongoCollection<Document> collection, List<String> matchingIDs) {
         List<Document> entities = new ArrayList<>();
 
         for (String id : matchingIDs) {
-            Document document = studentsCollection.find(new Document("_id", id)).first();
+            Document document = collection.find(new Document("_id", id)).first();
             if (document != null) {
                 entities.add(document);
             }
